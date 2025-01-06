@@ -1,0 +1,8 @@
+[package]
+name = "seedframe"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.83"
+tokio = { version = "1.42.0", features = ["full"] }

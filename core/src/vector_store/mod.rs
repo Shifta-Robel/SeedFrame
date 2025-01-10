@@ -1,4 +1,4 @@
-use super::embedding::Embedding;
+use super::embeddings::embedding::Embedding;
 
 #[derive(Debug)]
 pub enum VectorStoreError {

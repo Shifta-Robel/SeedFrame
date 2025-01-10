@@ -1,39 +1,48 @@
 use async_trait::async_trait;
 
-use super::Document;
+use super::LoadedDocument;
 
 #[async_trait]
 pub trait DirectLoader {
-    async fn retrieve(self) -> Document;
+    async fn retrieve(&self) -> Result<LoadedDocument, DirectLoaderError>;
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum DirectLoaderError {
+    Undefined,
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::loader::{Document, EmbedStrategy};
+    use crate::loader::{Document, EmbedStrategy, LoadedDocument};
 
     use super::*;
     use async_trait::async_trait;
 
-    pub struct MyDirectLoader;
+    pub struct MyDirectLoader {
+        id: uuid::Uuid,
+    }
 
     #[async_trait]
     impl DirectLoader for MyDirectLoader {
-        async fn retrieve(self) -> Document {
-            Document {
-                content: vec![String::from("hello world")],
-                embed_strategy: EmbedStrategy::DontRefresh
-            }
+        async fn retrieve(&self) -> Result<LoadedDocument, DirectLoaderError> {
+            let id = self.id;
+            Ok(LoadedDocument {
+                document: Document::new_with_id(id, String::from("hello")),
+                strategy: EmbedStrategy::IfNotExist,
+            })
         }
     }
 
     #[tokio::test]
     async fn test_simple_direct_loader() {
-        let my_direct_loader = MyDirectLoader;
+        let id = uuid::Uuid::new_v4();
+        let my_direct_loader = MyDirectLoader { id };
         let res = my_direct_loader.retrieve().await;
-        let doc = Document {
-                content: vec![String::from("hello world")],
-                embed_strategy: EmbedStrategy::DontRefresh
+        let expected = LoadedDocument {
+            document: Document::new_with_id(id, String::from("hello")),
+            strategy: EmbedStrategy::IfNotExist,
         };
-        assert_eq!(res, doc);
+        assert_eq!(res, Ok(expected));
     }
 }

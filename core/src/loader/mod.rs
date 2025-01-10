@@ -1,14 +1,22 @@
 pub mod direct;
 pub mod publishing;
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Document {
-    pub content: Vec<String>,
-    pub embed_strategy: EmbedStrategy
+use crate::document::Document;
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum EmbedStrategy {
+    IfNotExist,
+    Refresh,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum EmbedStrategy {
-    Refresh,
-    DontRefresh
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct LoadedDocument {
+    pub document: Document,
+    pub strategy: EmbedStrategy,
+}
+
+impl LoadedDocument {
+    pub fn new(document: Document, strategy: EmbedStrategy) -> Self {
+        Self { document, strategy }
+    }
 }

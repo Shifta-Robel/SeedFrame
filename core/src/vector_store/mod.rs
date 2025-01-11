@@ -6,7 +6,10 @@ pub enum VectorStoreError {
 }
 
 pub trait VectorStore {
-    fn get_by_id(&self, id: usize) -> impl std::future::Future<Output = Result<Option<Embedding>, VectorStoreError>> + Send;
+    fn get_by_id(
+        &self,
+        id: usize,
+    ) -> impl std::future::Future<Output = Result<Option<Embedding>, VectorStoreError>> + Send;
 
     fn store(
         &self,

@@ -1,18 +1,22 @@
 use async_trait::async_trait;
 use tokio::sync::broadcast;
 
+use super::LoadedDocument;
+
 #[async_trait]
 pub trait PublishingLoader {
-    async fn subscribe(&'_ self) -> broadcast::Receiver<String>;
+    async fn subscribe(&'_ self) -> broadcast::Receiver<LoadedDocument>;
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::{document::Document, embeddings::EmbeddingUpdateStrategy};
+
     use super::*;
     use async_trait::async_trait;
 
     pub struct MyPublishingLoader {
-        tx: broadcast::Sender<String>,
+        tx: broadcast::Sender<LoadedDocument>,
     }
 
     impl MyPublishingLoader {
@@ -21,8 +25,14 @@ mod tests {
             let txc = tx.clone();
             tokio::spawn(async move {
                 loop {
+                    let id = 0;
                     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                    txc.send(String::from("Hi")).unwrap();
+                    _ = txc
+                        .send(LoadedDocument {
+                            document: Document::new_with_id(id, String::from("hello")),
+                            strategy: EmbeddingUpdateStrategy::AppendAsNew,
+                        })
+                        .unwrap();
                 }
             });
             Self { tx }
@@ -31,7 +41,7 @@ mod tests {
 
     #[async_trait]
     impl PublishingLoader for MyPublishingLoader {
-        async fn subscribe(&'_ self) -> broadcast::Receiver<String> {
+        async fn subscribe(&'_ self) -> broadcast::Receiver<LoadedDocument> {
             self.tx.subscribe()
         }
     }
@@ -50,9 +60,10 @@ mod tests {
         })
         .await;
 
-        assert_eq!(
-            vec![String::from("Hi"), String::from("Hi"), String::from("Hi")],
-            msgs
-        );
+        let expected = LoadedDocument {
+            document: Document::new_with_id(0, String::from("hello")),
+            strategy: EmbeddingUpdateStrategy::AppendAsNew,
+        };
+        assert_eq!(vec![expected.clone(), expected.clone(), expected], msgs);
     }
 }

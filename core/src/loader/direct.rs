@@ -14,8 +14,8 @@ pub enum DirectLoaderError {
 
 #[cfg(test)]
 mod tests {
-    use crate::loader::{Document, LoadedDocument};
     use crate::embeddings::EmbeddingUpdateStrategy;
+    use crate::loader::{Document, LoadedDocument};
 
     use super::*;
     use async_trait::async_trait;

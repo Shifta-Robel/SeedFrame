@@ -1,5 +1,5 @@
+pub mod document;
 pub mod embeddings;
 pub mod loader;
-pub mod vector_store;
 pub mod providers;
-pub mod document; 
+pub mod vector_store;

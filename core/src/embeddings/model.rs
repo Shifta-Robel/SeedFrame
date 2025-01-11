@@ -8,9 +8,6 @@ pub enum ModelError {
 }
 
 #[async_trait]
-pub trait EmbeddingModel{
-    async fn embed(
-        &self,
-        data: &str,
-    ) -> Result<Vec<f64>, ModelError>;
+pub trait EmbeddingModel {
+    async fn embed(&self, data: &str) -> Result<Vec<f64>, ModelError>;
 }

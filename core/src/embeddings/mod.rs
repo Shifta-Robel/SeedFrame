@@ -2,15 +2,34 @@
 pub mod embedding;
 pub mod model;
 
-use crate::{loader::{direct::DirectLoader, publishing::PublishingLoader, EmbedStrategy}, vector_store::VectorStoreError};
+use crate::loader::{direct::DirectLoader, publishing::PublishingLoader};
 use embedding::Embedding;
-use model::EmbeddingModel;
+use model::{EmbeddingModel, ModelError};
 use std::sync::Arc;
 use crate::vector_store::VectorStore;
 
 #[derive(Debug)]
 pub enum EmbedderError {
     Undefined,
+}
+
+impl From<ModelError> for EmbedderError {
+    fn from(value: ModelError) -> Self {
+        match value {
+            ModelError::Undefined => Self::Undefined
+        }
+    }
+}
+
+/// Defines strategy to be used when changes to a loaded resources are detected
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum EmbeddingUpdateStrategy {
+    /// Append the new embedding as a new entry
+    AppendAsNew,
+    /// Overwrite the Embedding with the new embedded data
+    OverwriteExisting,
+    /// Retain only the initial version of resources ignoring changes
+    IgnoreUpdates
 }
 
 #[allow(dead_code)]
@@ -38,36 +57,42 @@ impl<V: VectorStore, M: EmbeddingModel> Embedder<V, M> {
     /// call to embed the documents from the loaders, called when the embedder gets initialized and
     /// when new there are updates to the documents from the publishing loaders
     async fn embed(&mut self) -> Result<(), EmbedderError> {
-        let mut embedded_docs : Vec<Embedding> = vec![];
         for loader in &self.direct_loaders {
-            let loaded_document = loader.retrieve().await.unwrap();
-
-            let vector_store_fetch_result = self
-                .vector_store
-                .get_by_id(loaded_document.document.id).await;
-
-            match loaded_document.strategy {
-                EmbedStrategy::IfNotExist => {
-                    if let Ok(None) = vector_store_fetch_result {
-                        embedded_docs.push(
-                            self.embedding_model
-                            .embed(&loaded_document.document.data).await.unwrap()
-                            );
+            let loaded_doc = loader.retrieve().await.unwrap();
+            let vec_store_fetch_result = self.vector_store.get_by_id(loaded_doc.document.id).await.unwrap();
+            if let Some(_embedding) = vec_store_fetch_result {
+                match loaded_doc.strategy {
+                    EmbeddingUpdateStrategy::IgnoreUpdates => {},
+                    EmbeddingUpdateStrategy::AppendAsNew => {
+                        // check if data changed
+                        let embedded_data = self.embedding_model.embed(loaded_doc.document.data.as_str()).await.unwrap();
+                        let new_id = loaded_doc.document.id + 1;
+                        self.vector_store.store(Embedding {
+                            id: new_id,
+                            raw_data: loaded_doc.document.data,
+                            embedded_data
+                        }).await.unwrap();
+                    },
+                    EmbeddingUpdateStrategy::OverwriteExisting => {
+                        // check if data changed
+                        let embedded_data = self.embedding_model.embed(loaded_doc.document.data.as_str()).await.unwrap();
+                        self.vector_store.store(Embedding {
+                            id: loaded_doc.document.id,
+                            raw_data: loaded_doc.document.data,
+                            embedded_data
+                        }).await.unwrap();
                     }
-                },
-                EmbedStrategy::Refresh => {
-                    embedded_docs.push(
-                        self.embedding_model.embed(&loaded_document.document.data).await.unwrap()
-                    );
                 }
+            }else{
+                let embedded_data = self.embedding_model.embed(loaded_doc.document.data.as_str()).await.unwrap();
+                self.vector_store.store(Embedding {
+                    id: loaded_doc.document.id,
+                    raw_data: loaded_doc.document.data,
+                    embedded_data
+                }).await.unwrap();
             }
         }
-        _ = self.update_vec_store(&embedded_docs).await;
         Ok(())
-    }
-
-    async fn update_vec_store(&mut self, _embeddings: &Vec<Embedding>) -> Result<(), VectorStoreError> {
-        unimplemented!()
     }
 
     /// return documents matching a query from the vector-store

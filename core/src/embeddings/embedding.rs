@@ -1,5 +1,5 @@
 pub struct Embedding {
-    id: usize,
-    embedded_data: Vec<f64>,
-    raw_data: String,
+    pub id: usize,
+    pub embedded_data: Vec<f64>,
+    pub raw_data: String,
 }

@@ -14,13 +14,14 @@ pub enum DirectLoaderError {
 
 #[cfg(test)]
 mod tests {
-    use crate::loader::{Document, EmbedStrategy, LoadedDocument};
+    use crate::loader::{Document, LoadedDocument};
+    use crate::embeddings::EmbeddingUpdateStrategy;
 
     use super::*;
     use async_trait::async_trait;
 
     pub struct MyDirectLoader {
-        id: uuid::Uuid,
+        id: usize,
     }
 
     #[async_trait]
@@ -29,19 +30,19 @@ mod tests {
             let id = self.id;
             Ok(LoadedDocument {
                 document: Document::new_with_id(id, String::from("hello")),
-                strategy: EmbedStrategy::IfNotExist,
+                strategy: EmbeddingUpdateStrategy::AppendAsNew,
             })
         }
     }
 
     #[tokio::test]
     async fn test_simple_direct_loader() {
-        let id = uuid::Uuid::new_v4();
+        let id = 0;
         let my_direct_loader = MyDirectLoader { id };
         let res = my_direct_loader.retrieve().await;
         let expected = LoadedDocument {
             document: Document::new_with_id(id, String::from("hello")),
-            strategy: EmbedStrategy::IfNotExist,
+            strategy: EmbeddingUpdateStrategy::AppendAsNew,
         };
         assert_eq!(res, Ok(expected));
     }

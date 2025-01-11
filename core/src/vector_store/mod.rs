@@ -1,4 +1,3 @@
-use uuid::Uuid;
 use super::embeddings::embedding::Embedding;
 
 #[derive(Debug)]
@@ -7,10 +6,10 @@ pub enum VectorStoreError {
 }
 
 pub trait VectorStore {
-    fn get_by_id(&self, id: Uuid) -> impl std::future::Future<Output = Result<Option<Embedding>, VectorStoreError>> + Send;
+    fn get_by_id(&self, id: usize) -> impl std::future::Future<Output = Result<Option<Embedding>, VectorStoreError>> + Send;
 
     fn store(
-        self,
+        &self,
         data: Embedding,
     ) -> impl std::future::Future<Output = Result<(), VectorStoreError>> + Send;
 

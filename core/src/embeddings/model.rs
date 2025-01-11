@@ -1,13 +1,16 @@
-use super::embedding::Embedding;
+use async_trait::async_trait;
+
+// use super::embedding::Embedding;
 
 #[derive(Debug)]
 pub enum ModelError {
     Undefined,
 }
 
-pub trait EmbeddingModel {
-    fn embed(
+#[async_trait]
+pub trait EmbeddingModel{
+    async fn embed(
         &self,
         data: &str,
-    ) -> impl std::future::Future<Output = Result<Embedding, ModelError>> + Send;
+    ) -> Result<Vec<f64>, ModelError>;
 }

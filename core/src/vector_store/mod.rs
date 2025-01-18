@@ -1,3 +1,6 @@
+use async_trait::async_trait;
+use uuid::Uuid;
+
 use super::embeddings::embedding::Embedding;
 
 #[derive(Debug)]
@@ -5,20 +8,23 @@ pub enum VectorStoreError {
     Undefined,
 }
 
+#[async_trait]
 pub trait VectorStore {
-    fn get_by_id(
+    async fn get_by_id(
         &self,
-        id: usize,
-    ) -> impl std::future::Future<Output = Result<Option<Embedding>, VectorStoreError>> + Send;
+        id: Uuid,
+    ) -> Result<Option<Embedding>, VectorStoreError>;
 
-    fn store(
+    async fn store(
         &self,
         data: Embedding,
-    ) -> impl std::future::Future<Output = Result<(), VectorStoreError>> + Send;
+    ) -> Result<(), VectorStoreError>;
 
-    fn top_n(
-        self,
-        query: &Embedding,
+    async fn top_n(
+        &self,
+        query: &[f64],
         n: usize,
-    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, VectorStoreError>> + Send;
+    ) -> Result<Vec<Embedding>, VectorStoreError>;
+
+    async fn has(&self, id: Uuid) -> Result<bool, VectorStoreError>;
 }

@@ -1,7 +1,5 @@
 use async_trait::async_trait;
 
-// use super::embedding::Embedding;
-
 #[derive(Debug)]
 pub enum ModelError {
     Undefined,

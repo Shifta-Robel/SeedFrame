@@ -1,16 +1,21 @@
-pub mod direct;
-pub mod publishing;
+use crate::document::Document;
+use async_trait::async_trait;
+use tokio::sync::broadcast;
+use uuid::Uuid;
 
-use crate::{document::Document, embeddings::EmbeddingUpdateStrategy};
-
+/// Defines wether the loader will be checking for changes or not
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct LoadedDocument {
-    pub document: Document,
-    pub strategy: EmbeddingUpdateStrategy,
+pub enum LoadingStrategy {
+    /// Loaded resource is assumed to be static, loader will load the resource once and not check for updates
+    Static,
+    /// Loaded resource is assumed to change over time
+    Dynamic,
 }
 
-impl LoadedDocument {
-    pub fn new(document: Document, strategy: EmbeddingUpdateStrategy) -> Self {
-        Self { document, strategy }
-    }
+#[async_trait]
+pub trait Loader {
+    fn strategy(&self) -> LoadingStrategy;
+    fn id(&self) -> Uuid;
+
+    async fn subscribe(&'_ self) -> broadcast::Receiver<Document>;
 }

@@ -1,21 +1,10 @@
 use crate::document::Document;
 use async_trait::async_trait;
-use tokio::sync::broadcast;
-use uuid::Uuid;
+use tokio::sync::broadcast::Receiver;
 
-/// Defines wether the loader will be checking for changes or not
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum LoadingStrategy {
-    /// Loaded resource is assumed to be static, loader will load the resource once and not check for updates
-    Static,
-    /// Loaded resource is assumed to change over time
-    Dynamic,
-}
+pub mod builtins;
 
 #[async_trait]
-pub trait Loader {
-    fn strategy(&self) -> LoadingStrategy;
-    fn id(&self) -> Uuid;
-
-    async fn subscribe(&'_ self) -> broadcast::Receiver<Document>;
+pub trait Loader: Sync {
+    async fn subscribe(&self) -> Receiver<Document>;
 }

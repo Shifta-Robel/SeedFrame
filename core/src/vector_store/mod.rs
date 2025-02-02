@@ -9,22 +9,12 @@ pub enum VectorStoreError {
 }
 
 #[async_trait]
-pub trait VectorStore {
-    async fn get_by_id(
-        &self,
-        id: Uuid,
-    ) -> Result<Option<Embedding>, VectorStoreError>;
+pub trait VectorStore: Send + Sync {
+    async fn get_by_id(&self, id: Uuid) -> Result<Option<Embedding>, VectorStoreError>;
 
-    async fn store(
-        &self,
-        data: Embedding,
-    ) -> Result<(), VectorStoreError>;
+    async fn store(&self, data: Embedding) -> Result<(), VectorStoreError>;
 
-    async fn top_n(
-        &self,
-        query: &[f64],
-        n: usize,
-    ) -> Result<Vec<Embedding>, VectorStoreError>;
+    async fn top_n(&self, query: &[f64], n: usize) -> Result<Vec<Embedding>, VectorStoreError>;
 
     async fn has(&self, id: Uuid) -> Result<bool, VectorStoreError>;
 }

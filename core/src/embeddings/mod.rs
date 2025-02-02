@@ -13,23 +13,23 @@ pub enum EmbedderError {
     Undefined,
 }
 
-pub struct Embedder<V: VectorStore, M: EmbeddingModel> {
+pub struct Embedder {
     loaders: Vec<Arc<dyn Loader>>,
-    vector_store: Arc<Mutex<V>>,
-    embedding_model: Arc<M>,
+    vector_store: Arc<Mutex<Box<dyn VectorStore>>>,
+    embedding_model: Arc<Box<dyn EmbeddingModel>>,
 }
 
-impl<V: VectorStore + Send + 'static, M: EmbeddingModel + Send + Sync + 'static> Embedder<V, M> {
+impl Embedder {
     /// initialize the embedder
     pub async fn init(
         loaders: Vec<Arc<dyn Loader>>,
-        vector_store: V,
-        embedding_model: M,
+        vector_store: Arc<Mutex<Box<dyn VectorStore>>>,
+        embedding_model: Arc<Box<dyn EmbeddingModel>>,
     ) -> Result<Self, EmbedderError> {
         let embedder = Self {
             loaders,
-            vector_store: Arc::new(Mutex::new(vector_store)),
-            embedding_model: Arc::new(embedding_model),
+            vector_store,
+            embedding_model,
         };
         embedder.init_loaders_listeners().await?;
         Ok(embedder)
@@ -56,7 +56,7 @@ impl<V: VectorStore + Send + 'static, M: EmbeddingModel + Send + Sync + 'static>
     }
 
     /// return documents matching a query from the vector-store
-    pub async fn query(self, query: &str, top_n: usize) -> Result<Vec<Embedding>, VectorStoreError> {
+    pub async fn query(&self, query: &str, top_n: usize) -> Result<Vec<Embedding>, VectorStoreError> {
         let query = self.embedding_model.embed(query).await.unwrap();
         self.vector_store.lock().await.top_n(&query, top_n).await
     }

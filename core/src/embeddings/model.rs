@@ -6,6 +6,6 @@ pub enum ModelError {
 }
 
 #[async_trait]
-pub trait EmbeddingModel {
+pub trait EmbeddingModel: Send + Sync {
     async fn embed(&self, data: &str) -> Result<Vec<f64>, ModelError>;
 }

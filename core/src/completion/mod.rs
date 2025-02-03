@@ -68,7 +68,7 @@ impl<M: CompletionModel> Client<M> {
     ) -> Result<Message, CompletionError> {
         self.send_prompt(
             prompt,
-            &history.unwrap_or(self.history),
+            &history.unwrap_or(self.history.clone()),
             self.temperature,
             self.max_tokens,
         )

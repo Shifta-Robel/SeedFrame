@@ -1,4 +1,5 @@
 use crate::completion::{CompletionError, CompletionModel, Message, MessageHistory};
+use crate::embeddings::model::{EmbeddingModel, ModelError};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
@@ -92,6 +93,68 @@ impl CompletionModel for OpenAICompletionModel {
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
             Err(CompletionError::Undefined)
+        }
+    }
+}
+
+pub struct OpenAIEmbeddingModel {
+    api_url: String,
+    api_key: String,
+    model: String,
+}
+
+#[derive(Deserialize)]
+struct OpenAIEmbeddingResponse {
+    pub data: Vec<OpenAIEmbeddingData>,
+    object: String,
+    model: String,
+    usage: OpenAIUsage,
+}
+
+#[derive(Deserialize)]
+struct OpenAIEmbeddingData {
+    pub embedding: Vec<f64>,
+    object: String,
+    index: usize,
+}
+
+#[derive(Deserialize)]
+struct OpenAIUsage {
+    prompt_tokens: usize,
+    total_tokens: usize,
+}
+
+#[async_trait]
+impl EmbeddingModel for OpenAIEmbeddingModel {
+    async fn embed(&self, data: &str) -> Result<Vec<f64>, ModelError> {
+        let client = Client::new();
+        let request_body = json!({
+                "input": data,
+                "model": self.model,
+        });
+        let response = client
+            .post(&self.api_url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|_| ModelError::Undefined)?;
+
+        if response.status().is_success() {
+            let response = response
+                .json::<OpenAIEmbeddingResponse>()
+                .await
+                .map_err(|_| ModelError::Undefined)?;
+
+            Ok(response
+                .data
+                .into_iter()
+                .map(|d| d.embedding)
+                .flatten()
+                .collect())
+        } else {
+            Err(ModelError::Undefined)
         }
     }
 }

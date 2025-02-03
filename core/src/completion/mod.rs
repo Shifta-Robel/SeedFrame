@@ -2,10 +2,12 @@ use async_trait::async_trait;
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    Preamble(String),
     User(String),
+    Assistant(String),
 }
 
-type MessageHistory = Vec<Message>;
+pub(crate) type MessageHistory = Vec<Message>;
 
 #[derive(Debug, Clone)]
 pub enum CompletionError {
@@ -19,7 +21,6 @@ pub trait CompletionModel {
     async fn send(
         &self,
         message: Message,
-        preamble: &str,
         history: &MessageHistory,
         temperature: f64,
         max_tokens: usize,
@@ -28,7 +29,6 @@ pub trait CompletionModel {
 
 pub struct Client<M: CompletionModel> {
     completion_model: M,
-    preamble: String,
     history: MessageHistory,
 
     // common prompt parameters
@@ -42,8 +42,7 @@ impl<M: CompletionModel> Client<M> {
     pub fn new(completion_model: M, preamble: String, temperature: f64, max_tokens: usize) -> Self {
         Self {
             completion_model,
-            preamble,
-            history: vec![],
+            history: vec![Message::Preamble(preamble)],
             embedders: vec![],
             temperature,
             max_tokens,
@@ -52,13 +51,7 @@ impl<M: CompletionModel> Client<M> {
 
     pub async fn prompt(&mut self, prompt: &str) -> Result<Message, CompletionError> {
         let response = self
-            .send_prompt(
-                prompt,
-                &self.preamble,
-                &self.history,
-                self.temperature,
-                self.max_tokens,
-            )
+            .send_prompt(prompt, &self.history, self.temperature, self.max_tokens)
             .await;
 
         if let Ok(ref response) = response {
@@ -71,13 +64,11 @@ impl<M: CompletionModel> Client<M> {
     pub async fn one_shot(
         &mut self,
         prompt: &str,
-        preamble: Option<String>,
-        history: MessageHistory,
+        history: Option<MessageHistory>,
     ) -> Result<Message, CompletionError> {
         self.send_prompt(
             prompt,
-            &preamble.unwrap_or(self.preamble.clone()),
-            &history,
+            &history.unwrap_or(self.history),
             self.temperature,
             self.max_tokens,
         )
@@ -87,7 +78,6 @@ impl<M: CompletionModel> Client<M> {
     async fn send_prompt(
         &self,
         prompt: &str,
-        preamble: &str,
         history: &MessageHistory,
         temperature: f64,
         max_tokens: usize,
@@ -97,13 +87,7 @@ impl<M: CompletionModel> Client<M> {
             Message::User(format!("{prompt}\n\n<context>\n{context}\n</context>\n"));
         let response = self
             .completion_model
-            .send(
-                message_with_context,
-                &preamble,
-                history,
-                temperature,
-                max_tokens,
-            )
+            .send(message_with_context, history, temperature, max_tokens)
             .await;
 
         response

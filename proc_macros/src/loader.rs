@@ -110,19 +110,19 @@ fn validate_config(config: &LoaderConfig, loader_type: &BuiltinLoaderType) -> Re
             Ok(())
         }
     };
-    _ = check_arg("path", &config.path);
-    _ = check_arg("url", &config.url);
-    _ = check_arg("interval", &config.interval.map(|v| v.to_string()));
+    _ = check_arg("path", &config.path)?;
+    _ = check_arg("url", &config.url)?;
+    _ = check_arg("interval", &config.interval.map(|v| v.to_string()))?;
 
     Ok(())
 }
 
-fn generate_builder(loader_type: &BuiltinLoaderType, config: &LoaderConfig) -> proc_macro2::TokenStream {
+fn generate_builder(loader_type: &BuiltinLoaderType, config: &LoaderConfig, vis: &syn::Visibility) -> proc_macro2::TokenStream {
     match loader_type {
         BuiltinLoaderType::FileOnceLoader => {
             let path = config.path.as_ref().unwrap();
             quote! {
-                pub(crate) fn build() -> Self {
+                #vis fn build() -> Self {
                     Self { inner: FileOnceLoaderBuilder::new(#path) }
                 }
             }
@@ -159,12 +159,14 @@ pub(crate) fn loader_impl(args: TokenStream, input: TokenStream) -> Result<Token
     let loader_type = BuiltinLoaderType::from_str(&config.kind)?;
     validate_config(&config, &loader_type)?;
 
-    let input_struct: syn::ItemStruct = input.clone();
-    let struct_ident = &input_struct.ident;
-    let builder_impl = generate_builder(&loader_type, &config);
+    let (struct_ident, struct_vis) = (&input.ident, &input.vis);
+    let builder_impl = generate_builder(&loader_type, &config, &struct_vis);
+    let kind: syn::Type = syn::parse_str(&loader_type.to_string()).expect("Failed to parse type");
 
     Ok(quote! {
-        #input_struct
+        #struct_vis struct #struct_ident{
+            inner: #kind
+        };
 
         impl #struct_ident {
             #builder_impl

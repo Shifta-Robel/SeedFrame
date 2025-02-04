@@ -141,13 +141,13 @@ impl EmbeddingModel for OpenAIEmbeddingModel {
             .json(&request_body)
             .send()
             .await
-            .map_err(|_| ModelError::Undefined)?;
+            .map_err(|e| ModelError::RequestError(e.to_string()))?;
 
         if response.status().is_success() {
             let response = response
                 .json::<OpenAIEmbeddingResponse>()
                 .await
-                .map_err(|_| ModelError::Undefined)?;
+                .map_err(|e| ModelError::ParseError(e.to_string()))?;
 
             Ok(response
                 .data

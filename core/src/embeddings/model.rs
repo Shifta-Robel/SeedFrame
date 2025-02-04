@@ -2,7 +2,9 @@ use async_trait::async_trait;
 
 #[derive(Debug)]
 pub enum ModelError {
-    Undefined,
+    RequestError(String),
+    ParseError(String),
+    ProviderError(String),
 }
 
 #[async_trait]

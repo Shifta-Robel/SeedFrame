@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Message {
     Preamble(String),
     User(String),
@@ -11,7 +11,9 @@ pub(crate) type MessageHistory = Vec<Message>;
 
 #[derive(Debug, Clone)]
 pub enum CompletionError {
-    Undefined,
+    ProviderError(String),
+    RequestError(String),
+    ParseError(String)
 }
 
 const DEFAULT_TOP_N: usize = 1;

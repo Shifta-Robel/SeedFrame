@@ -22,20 +22,21 @@ impl OpenAICompletionModel {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Eq, PartialEq)]
 #[serde(tag = "role", content = "content")]
+#[allow(non_camel_case_types)]
 pub enum OpenAIMessage {
-    System(String),
-    User(String),
-    Assistant(String),
+    system(String),
+    user(String),
+    assistant(String),
 }
 
 impl From<Message> for OpenAIMessage {
     fn from(value: Message) -> OpenAIMessage {
         match value {
-            Message::Preamble(s) => OpenAIMessage::System(s),
-            Message::User(s) => OpenAIMessage::User(s),
-            Message::Assistant(s) => OpenAIMessage::Assistant(s),
+            Message::Preamble(s) => OpenAIMessage::system(s),
+            Message::User(s) => OpenAIMessage::user(s),
+            Message::Assistant(s) => OpenAIMessage::assistant(s),
         }
     }
 }
@@ -72,27 +73,29 @@ impl CompletionModel for OpenAICompletionModel {
             .json(&request_body)
             .send()
             .await
-            .map_err(|_| CompletionError::Undefined)?;
+            .map_err(|e| CompletionError::RequestError(e.to_string()))?;
 
         if response.status().is_success() {
             let response_json: serde_json::Value = response
                 .json()
                 .await
-                .map_err(|_| CompletionError::Undefined)?;
+                .map_err(|e| CompletionError::ParseError(e.to_string()))?;
 
             let response_message = response_json["choices"][0]["message"]["content"]
                 .as_str()
-                .ok_or(CompletionError::Undefined)?
+                .ok_or(CompletionError::ParseError(
+                    "Invalid response body".to_string(),
+                ))?
                 .to_string();
 
             Ok(Message::Assistant(response_message))
         } else {
-            let _error_message = response
+            let error_message = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
-            Err(CompletionError::Undefined)
+            Err(CompletionError::ProviderError(error_message))
         }
     }
 }
@@ -103,25 +106,24 @@ pub struct OpenAIEmbeddingModel {
     model: String,
 }
 
+impl OpenAIEmbeddingModel {
+    pub fn new(api_key: String, api_url: String, model: String) -> Self {
+        Self {
+            api_url,
+            api_key,
+            model,
+        }
+    }
+}
+
 #[derive(Deserialize)]
 struct OpenAIEmbeddingResponse {
     pub data: Vec<OpenAIEmbeddingData>,
-    object: String,
-    model: String,
-    usage: OpenAIUsage,
 }
 
 #[derive(Deserialize)]
 struct OpenAIEmbeddingData {
     pub embedding: Vec<f64>,
-    object: String,
-    index: usize,
-}
-
-#[derive(Deserialize)]
-struct OpenAIUsage {
-    prompt_tokens: usize,
-    total_tokens: usize,
 }
 
 #[async_trait]
@@ -139,13 +141,13 @@ impl EmbeddingModel for OpenAIEmbeddingModel {
             .json(&request_body)
             .send()
             .await
-            .map_err(|_| ModelError::Undefined)?;
+            .map_err(|e| ModelError::RequestError(e.to_string()))?;
 
         if response.status().is_success() {
             let response = response
                 .json::<OpenAIEmbeddingResponse>()
                 .await
-                .map_err(|_| ModelError::Undefined)?;
+                .map_err(|e| ModelError::ParseError(e.to_string()))?;
 
             Ok(response
                 .data
@@ -154,7 +156,61 @@ impl EmbeddingModel for OpenAIEmbeddingModel {
                 .flatten()
                 .collect())
         } else {
-            Err(ModelError::Undefined)
+            let error_message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+
+            Err(ModelError::ProviderError(error_message))
         }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn simple_openai_completion_request() {
+        let api_key = std::env::var("SEEDFRAME_TEST_OPENAI_KEY")
+            .unwrap()
+            .to_string();
+        let api_url = "https://api.openai.com/v1/chat/completions".to_string();
+        let model = "gpt-4o-mini".to_string();
+
+        let openai_completion_model = OpenAICompletionModel::new(api_key, api_url, model);
+
+        let response = openai_completion_model
+            .send(
+                Message::User(
+                    r#"
+This is a test from a software library that uses this LLM assistant.
+For this test to be considered successful, reply with "okay" without the quotes, and NOTHING else.
+"#
+                    .to_string(),
+                ),
+                &vec![],
+                0.0,
+                10,
+            )
+            .await;
+
+        assert!(response.is_ok());
+
+        assert!(response.is_ok_and(|v| v == Message::Assistant("okay".to_string())));
+    }
+
+    #[tokio::test]
+    async fn simple_openai_embed_request() {
+        let api_key = std::env::var("SEEDFRAME_TEST_OPENAI_KEY")
+            .unwrap()
+            .to_string();
+        let api_url = "https://api.openai.com/v1/embeddings".to_string();
+        let model = "text-embedding-3-small".to_string();
+
+        let openai_embedding_model = OpenAIEmbeddingModel::new(api_key, api_url, model);
+
+        let response = openai_embedding_model.embed("test").await;
+
+        assert!(response.is_ok());
     }
 }

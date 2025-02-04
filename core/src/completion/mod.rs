@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Message {
     Preamble(String),
     User(String),

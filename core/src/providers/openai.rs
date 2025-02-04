@@ -22,20 +22,21 @@ impl OpenAICompletionModel {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Eq, PartialEq)]
 #[serde(tag = "role", content = "content")]
+#[allow(non_camel_case_types)]
 pub enum OpenAIMessage {
-    System(String),
-    User(String),
-    Assistant(String),
+    system(String),
+    user(String),
+    assistant(String),
 }
 
 impl From<Message> for OpenAIMessage {
     fn from(value: Message) -> OpenAIMessage {
         match value {
-            Message::Preamble(s) => OpenAIMessage::System(s),
-            Message::User(s) => OpenAIMessage::User(s),
-            Message::Assistant(s) => OpenAIMessage::Assistant(s),
+            Message::Preamble(s) => OpenAIMessage::system(s),
+            Message::User(s) => OpenAIMessage::user(s),
+            Message::Assistant(s) => OpenAIMessage::assistant(s),
         }
     }
 }
@@ -156,5 +157,38 @@ impl EmbeddingModel for OpenAIEmbeddingModel {
         } else {
             Err(ModelError::Undefined)
         }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn simple_openai_request() {
+        let api_key = std::env::var("SEEDFRAME_TEST_OPENAI_KEY")
+            .unwrap()
+            .to_string();
+        let api_url = "https://api.openai.com/v1/chat/completions".to_string();
+        let model = "gpt-4o-mini".to_string();
+
+        let openai_completion_model = OpenAICompletionModel::new(api_key, api_url, model);
+
+        let response = openai_completion_model
+            .send(
+                Message::User(
+                    r#"
+This is a test from a software library that uses this LLM assistant.
+For this test to be considered successful, reply with "okay" without the quotes, and NOTHING else.
+"#
+                    .to_string(),
+                ),
+                &vec![],
+                0.0,
+                10,
+            )
+            .await;
+
+        assert!(response.is_ok());
+
+        assert!(response.is_ok_and(|v| v == Message::Assistant("okay".to_string())));
     }
 }

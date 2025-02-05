@@ -1,12 +1,12 @@
-use proc_macro2::TokenStream;
 use darling::{ast::NestedMeta, FromMeta};
-use quote::quote;
+use proc_macro2::TokenStream;
+use quote::{format_ident, quote};
 use std::fmt::Display;
 
 type DarlingError = darling::Error;
 
-#[derive(Debug,FromMeta, Clone)]
-struct LoaderConfig{
+#[derive(Debug, FromMeta, Clone)]
+struct LoaderConfig {
     kind: String,
     #[darling(default)]
     url: Option<String>,
@@ -36,34 +36,41 @@ impl Display for LoaderMacroError {
         match self {
             Self::ParseError(e) => {
                 write!(f, "Failed to parse loader macro: {e}")
-            },
+            }
             Self::UnknownLoader(l) => {
-                write!(f, "Unknown Loader kind: '{l}'. valid optionss are FileOnceLoader, FileUpdatingLoader, HttpOnceLoader")
-            },
+                write!(f, "Unknown Loader kind: '{l}'. valid options are FileOnceLoader, FileUpdatingLoader, HttpOnceLoader")
+            }
             Self::UnsupportedArgument(arg, loader) => {
                 write!(f, "Unsupported argument '{arg}' for '{loader}' loader type")
-            },
+            }
             Self::MissingArgument(arg, loader) => {
-                write!(f, "Missing required argument '{arg}' for '{loader}' loader type")
-            },
+                write!(
+                    f,
+                    "Missing required argument '{arg}' for '{loader}' loader type"
+                )
+            }
         }
     }
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 enum BuiltinLoaderType {
     FileOnceLoader,
     FileUpdatingLoader,
-    HttpOnceLoader
+    HttpOnceLoader,
 }
 
-impl Display for BuiltinLoaderType{
+impl Display for BuiltinLoaderType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f,"{}", match self {
-            Self::FileOnceLoader => "FileOnceLoader",
-            Self::FileUpdatingLoader => "FileUpdatingLoader",
-            Self::HttpOnceLoader => "HttpOnceLoader"
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::FileOnceLoader => "FileOnceLoader",
+                Self::FileUpdatingLoader => "FileUpdatingLoader",
+                Self::HttpOnceLoader => "HttpOnceLoader",
+            }
+        )
     }
 }
 
@@ -77,10 +84,10 @@ impl BuiltinLoaderType {
         }
     }
 
-    fn required_args(&self) ->  &'static [&'static str] {
+    fn required_args(&self) -> &'static [&'static str] {
         match self {
             Self::FileOnceLoader | Self::FileUpdatingLoader => &["path"],
-            Self::HttpOnceLoader =>  &["url"],
+            Self::HttpOnceLoader => &["url"],
         }
     }
 
@@ -92,7 +99,10 @@ impl BuiltinLoaderType {
     }
 }
 
-fn validate_config(config: &LoaderConfig, loader_type: &BuiltinLoaderType) -> Result<(), LoaderMacroError> {
+fn validate_config(
+    config: &LoaderConfig,
+    loader_type: &BuiltinLoaderType,
+) -> Result<(), LoaderMacroError> {
     let required = loader_type.required_args();
     let supported = loader_type.supported_args();
     let check_arg = |name: &str, value: &Option<String>| {
@@ -101,12 +111,12 @@ fn validate_config(config: &LoaderConfig, loader_type: &BuiltinLoaderType) -> Re
                 name.to_string(),
                 loader_type.to_string(),
             ))
-        }else if value.is_some() && !supported.contains(&name) {
+        } else if value.is_some() && !supported.contains(&name) {
             Err(LoaderMacroError::UnsupportedArgument(
                 name.to_string(),
                 loader_type.to_string(),
             ))
-        }else {
+        } else {
             Ok(())
         }
     };
@@ -117,26 +127,34 @@ fn validate_config(config: &LoaderConfig, loader_type: &BuiltinLoaderType) -> Re
     Ok(())
 }
 
-fn generate_builder(loader_type: &BuiltinLoaderType, config: &LoaderConfig, vis: &syn::Visibility) -> proc_macro2::TokenStream {
+fn generate_builder(
+    loader_type: &BuiltinLoaderType,
+    config: &LoaderConfig,
+    vis: &syn::Visibility,
+) -> proc_macro2::TokenStream {
     match loader_type {
         BuiltinLoaderType::FileOnceLoader => {
-            let path = config.path.as_ref().unwrap();
+            let path = config.path.as_ref().unwrap().to_string();
             quote! {
                 #vis fn build() -> Self {
-                    Self { inner: FileOnceLoaderBuilder::new(#path) }
+                    use seedframe::loader::builtins::file_loaders::file_once_loader::FileOnceLoaderBuilder;
+                    Self { inner: (FileOnceLoaderBuilder::new(vec![#path.to_string()]).build()) }
                 }
             }
         }
         BuiltinLoaderType::FileUpdatingLoader => {
-            quote! { }
+            quote! {}
         }
         BuiltinLoaderType::HttpOnceLoader => {
-            quote! { }
+            quote! {}
         }
     }
 }
 
-pub(crate) fn loader_impl(args: TokenStream, input: TokenStream) -> Result<TokenStream, LoaderMacroError> {
+pub(crate) fn loader_impl(
+    args: TokenStream,
+    input: TokenStream,
+) -> Result<TokenStream, LoaderMacroError> {
     let attr_args: Vec<NestedMeta> = match NestedMeta::parse_meta_list(args) {
         Ok(v) => v,
         Err(e) => {
@@ -149,6 +167,7 @@ pub(crate) fn loader_impl(args: TokenStream, input: TokenStream) -> Result<Token
             return Err(darling::Error::from(e).into());
         }
     };
+
     let config: LoaderConfig = match LoaderConfig::from_list(&attr_args) {
         Ok(v) => v,
         Err(e) => {
@@ -163,13 +182,24 @@ pub(crate) fn loader_impl(args: TokenStream, input: TokenStream) -> Result<Token
     let builder_impl = generate_builder(&loader_type, &config, &struct_vis);
     let kind: syn::Type = syn::parse_str(&loader_type.to_string()).expect("Failed to parse type");
 
+    let static_loader_instance_ident =
+        format_ident!("__{}_INSTANCE", struct_ident.to_string().to_uppercase(),);
+    let static_loader_instance = quote! {
+        static #static_loader_instance_ident: ::std::sync::LazyLock<::std::sync::Arc<#struct_ident>>
+          = ::std::sync::LazyLock::new(||{
+              ::std::sync::Arc::new(#struct_ident::build())
+        });
+    };
+
     Ok(quote! {
         #struct_vis struct #struct_ident{
-            inner: #kind
-        };
+            inner: #kind,
+        }
 
         impl #struct_ident {
             #builder_impl
         }
+
+        #static_loader_instance
     })
 }

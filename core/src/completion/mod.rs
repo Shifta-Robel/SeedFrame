@@ -1,5 +1,7 @@
 use async_trait::async_trait;
 
+use crate::embeddings::Embedder;
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Message {
     Preamble(String),
@@ -37,15 +39,15 @@ pub struct Client<M: CompletionModel> {
     temperature: f64,
     max_tokens: usize,
 
-    embedders: Vec<crate::embeddings::Embedder>,
+    embedders: Vec<Embedder>,
 }
 
 impl<M: CompletionModel> Client<M> {
-    pub fn new(completion_model: M, preamble: String, temperature: f64, max_tokens: usize) -> Self {
+    pub fn new(completion_model: M, preamble: String, temperature: f64, max_tokens: usize, embedders: Vec<Embedder>) -> Self {
         Self {
             completion_model,
             history: vec![Message::Preamble(preamble)],
-            embedders: vec![],
+            embedders,
             temperature,
             max_tokens,
         }

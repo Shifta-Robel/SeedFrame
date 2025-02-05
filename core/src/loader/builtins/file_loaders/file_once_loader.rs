@@ -13,7 +13,7 @@ impl FileOnceLoaderBuilder {
         Self { paths }
     }
 
-    pub async fn build(self) -> FileOnceLoader {
+    pub fn build(self) -> FileOnceLoader {
         let files = resolve_input_to_files(self.paths.iter().map(|s| s.as_str()).collect()).unwrap();
         let (tx, rx) = broadcast::channel(10);
 

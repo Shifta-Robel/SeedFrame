@@ -43,7 +43,7 @@ impl Display for VectorStoreMacroError {
             Self::UnsupportedArgument(arg, vector_store) => {
                 write!(
                     f,
-                    "Unsupported argument '{arg}' for '{vector_store}' loader type"
+                    "Unsupported argument '{arg}' for '{vector_store}' vector store type"
                 )
             }
             Self::MissingArgument(arg, vector_store) => {

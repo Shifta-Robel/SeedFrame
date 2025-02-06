@@ -167,9 +167,10 @@ pub(crate) fn vector_store_impl(
     let builder_impl = generate_builder(&vector_store_type, &config, &struct_vis);
     let kind: syn::Type =
         syn::parse_str(&vector_store_type.to_string()).expect("Failed to parse type");
+
     Ok(quote! {
         #struct_vis struct #struct_ident{
-            inner: #kind,
+            pub inner: #kind,
         }
 
         impl #struct_ident {

@@ -193,11 +193,18 @@ pub(crate) fn loader_impl(
 
     Ok(quote! {
         #struct_vis struct #struct_ident{
-            inner: #kind,
+            pub inner: #kind,
         }
 
         impl #struct_ident {
             #builder_impl
+        }
+
+        #[async_trait::async_trait]
+        impl ::seedframe::loader::Loader for #struct_ident {
+            async fn subscribe(&self) -> ::tokio::sync::broadcast::Receiver<::seedframe::document::Document> {
+                self.inner.subscribe().await
+            }
         }
 
         #static_loader_instance

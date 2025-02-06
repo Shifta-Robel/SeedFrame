@@ -1,8 +1,9 @@
 pub mod embedding;
 pub mod model;
-
-use crate::loader::LoaderInstance;
-use crate::vector_store::{VectorStore, VectorStoreError};
+use crate::{
+    loader::LoaderInstance,
+    vector_store::{VectorStore, VectorStoreError},
+};
 use embedding::Embedding;
 use model::EmbeddingModel;
 use std::sync::Arc;

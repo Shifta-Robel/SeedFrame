@@ -9,6 +9,12 @@ pub struct InMemoryVectorStore{
     embeddings: RwLock<HashMap<String, Embedding>>
 }
 
+impl InMemoryVectorStore {
+    pub fn new() -> Self {
+        Self { embeddings: RwLock::new(HashMap::new()) }
+    }
+}
+
 #[async_trait]
 impl VectorStore for InMemoryVectorStore {
     async fn get_by_id(&self, id: String) -> Result<Embedding, VectorStoreError>{

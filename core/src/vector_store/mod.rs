@@ -2,7 +2,7 @@ use async_trait::async_trait;
 
 use super::embeddings::embedding::Embedding;
 
-mod in_memory_vec_store;
+pub mod in_memory_vec_store;
 pub use in_memory_vec_store::InMemoryVectorStore;
 
 #[derive(Debug, PartialEq, Eq)]

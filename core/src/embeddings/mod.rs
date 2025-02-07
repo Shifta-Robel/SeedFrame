@@ -14,14 +14,23 @@ pub enum EmbedderError {
     Undefined,
 }
 
+/// The `Embedder` listens to loaders, generates embeddings for incoming documents,
+/// and stores them in a vector store. It also provides functionality to query the vector store
 pub struct Embedder {
+    /// A list of loaders to listen to for new documents.
     loaders: Vec<LoaderInstance>,
+    /// Vector store for storing and querying embeddings.
     vector_store: Arc<Mutex<Box<dyn VectorStore>>>,
+    /// An embedding model used to generate embeddings from raw data.
     embedding_model: Arc<Box<dyn EmbeddingModel>>,
 }
 
 impl Embedder {
-    /// initialize the embedder
+    /// Initializes the `Embedder` with the provided loaders, vector store, and embedding model.
+    ///
+    /// # Returns
+    /// * `Ok(Self)` - A new `Embedder` instance.
+    /// * `Err(EmbedderError)` - An error if initialization fails.
     pub async fn init(
         loaders: Vec<LoaderInstance>,
         vector_store: Arc<Mutex<Box<dyn VectorStore>>>,
@@ -36,7 +45,14 @@ impl Embedder {
         Ok(embedder)
     }
 
-    /// initializes the listeners for the loaders
+    /// Initializes listeners for the loaders.
+    ///
+    /// This method spawns asynchronous tasks to listen for new documents from the loaders,
+    /// generate embeddings, and store them in the vector store.
+    ///
+    /// # Returns
+    /// * `Ok(())` - If the listeners are successfully initialized.
+    /// * `Err(EmbedderError)` - If an error occurs during initialization.
     async fn init_loaders_listeners(&self) -> Result<(), EmbedderError> {
         for loader in &self.loaders {
             let embedding_model = Arc::clone(&self.embedding_model);
@@ -63,7 +79,15 @@ impl Embedder {
         Ok(())
     }
 
-    /// return documents matching a query from the vector-store
+    /// Queries the vector store for documents similar to the provided query.
+    ///
+    /// # Arguments
+    /// * `query` - The query string to search for.
+    /// * `top_n` - The number of top results to return.
+    ///
+    /// # Returns
+    /// * `Ok(Vec<Embedding>)` - A list of the top `n` embeddings matching the query.
+    /// * `Err(VectorStoreError)` - An error if the query fails.
     pub async fn query(
         &self,
         query: &str,

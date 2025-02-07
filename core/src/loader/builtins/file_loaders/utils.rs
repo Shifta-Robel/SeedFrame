@@ -3,6 +3,14 @@ use glob::glob;
 use walkdir::WalkDir;
 use pdf_extract::extract_text;
 
+/// Resolves a list of glob patterns into a list of file paths.
+///
+/// # Arguments
+/// * `inputs` - glob patterns as a vector of `&str`s.
+///
+/// # Returns
+/// * `Ok(Vec<PathBuf>)` - A vector of resolved file paths.
+/// * `Err(io::Error)`
 pub(super) fn resolve_input_to_files(inputs: Vec<&str>) -> io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
@@ -29,6 +37,17 @@ pub(super) fn resolve_input_to_files(inputs: Vec<&str>) -> io::Result<Vec<PathBu
     Ok(files)
 }
 
+/// Parses the content of a file based on its extension.
+///
+/// This function reads the content of a file. If the file is a PDF, it uses the `pdf_extract` crate
+/// to extract text from the PDF. For all other file types, it reads the file as plain text.
+///
+/// # Arguments
+/// * `file_path` - The path to the file to parse.
+///
+/// # Returns
+/// * `Ok(String)` - The content of the file as a string.
+/// * `Err(io::Error)` - An error if the file cannot be read or parsed.
 pub(super) fn parse_file(file_path: &Path) -> io::Result<String> {
     let content = if let Some(ext) = file_path.extension() {
         if ext == "pdf" {

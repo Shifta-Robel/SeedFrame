@@ -136,7 +136,10 @@ async fn main() {
 ## RoadMap
 
 -   [ ] More customization options
--   [ ] More providers
+-   [ ] More providers like DeepSeek, Anthropic, Gemini
+-   [ ] More loaders
 -   [ ] More vector store implementations
+-   [ ] Integration with platforms like X(Twitter), Discord, Telegram
+-   [ ] Tracing
 -   and more&#x2026;
 

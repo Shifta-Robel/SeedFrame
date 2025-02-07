@@ -28,12 +28,13 @@ A simple, and robust Rust library for writing LLM applications
 ## Installation
 
 Add the library to your cargo dependencies
-
-    [dependencies]
-    #TODO: upload crates to crates.io
-    async-trait = "0.1.86"
-    tokio = { version = "1.42.0", features = ["full"] }
-
+```toml
+[dependencies]
+seedframe = "0.0.1"
+seedframe_macros = "0.0.1"
+async-trait = "0.1.86"
+tokio = { version = "1.42.0", features = ["full"] }
+```
 
 <a id="org8330441"></a>
 
@@ -46,7 +47,7 @@ This library is in early stages and its API  is subject to change.
 
 ### Architectural overview
 
-Seedframe is a library for creating LLM applications like RAG systems. It provides a `Client` type that can be loaded up with data from text documents, HTTP api's or anything that can be embedded using =Embedder=s.
+Seedframe is a library for creating LLM applications like RAG systems. It provides a `Client` type that can be loaded up with data from text documents, HTTP api's or anything that can be embedded using `Embedder`s.
 
 
 <a id="org3ee22e6"></a>

@@ -153,7 +153,7 @@ fn generate_builder(
             let model = config.model.as_ref().unwrap().to_string();
             let embedding_model_init = quote! {
                 {
-                    ::std::sync::Arc::new(::std::boxed::Box::new(seedframe::providers::openai::OpenAIEmbeddingModel::new(::std::env::var("SEEDFRAME_OPENAI_API_KEY").unwrap().to_string(), "https://api.openai.com/v1/chat/completions".to_string(), #model.to_string())))
+                    ::std::sync::Arc::new(::std::boxed::Box::new(seedframe::providers::openai::OpenAIEmbeddingModel::new(::std::env::var("SEEDFRAME_OPENAI_API_KEY").unwrap().to_string(), "https://api.openai.com/v1/embeddings".to_string(), #model.to_string())))
                 }
             };
             quote! {
@@ -254,7 +254,6 @@ pub(crate) fn embedder_impl(
         &config,
         &struct_vis,
     );
-    //    let kind: syn::Type = syn::parse_str(&embedder_type.to_string()).expect("Failed to parse type");
 
     Ok(quote! {
         #struct_vis struct #struct_ident{

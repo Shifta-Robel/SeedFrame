@@ -1102,6 +1102,7 @@ dependencies = [
  "glob",
  "pdf-extract",
  "reqwest",
+ "seedframe_macros",
  "serde",
  "serde_json",
  "tokio",

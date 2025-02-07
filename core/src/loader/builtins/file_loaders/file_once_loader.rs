@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use tokio::sync::broadcast;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::{document::Document, loader::Loader};
 use super::utils::{parse_file, resolve_input_to_files};
@@ -15,27 +16,43 @@ impl FileOnceLoaderBuilder {
 
     pub fn build(self) -> FileOnceLoader {
         let files = resolve_input_to_files(self.paths.iter().map(|s| s.as_str()).collect()).unwrap();
-        let (tx, rx) = broadcast::channel(10);
+        let (tx, _rx) = broadcast::channel(files.len());
 
+        let mut documents: Vec<Document> = vec![];
         for file in files {
             let data = parse_file(&file).unwrap();
             let document = Document {
                 id: file.to_string_lossy().to_string(),
                 data,
             };
-            tx.send(document).unwrap();
+            documents.push(document);
         }
-        FileOnceLoader{rx}
+
+        FileOnceLoader {
+            tx,
+            documents,
+            sent: AtomicBool::new(false),
+        }
     }
 }
 
 pub struct FileOnceLoader {
-    rx: broadcast::Receiver<Document>,
+    tx: broadcast::Sender<Document>,
+    documents: Vec<Document>,
+    sent: AtomicBool,
 }
 
 #[async_trait]
 impl Loader for FileOnceLoader {
     async fn subscribe(&self) -> broadcast::Receiver<Document> {
-        self.rx.resubscribe()
+        let receiver = self.tx.subscribe();
+        if !self.sent.load(Ordering::Acquire) {
+            if self.sent.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+                for doc in &self.documents {
+                    self.tx.send(doc.clone()).unwrap();
+                }
+            }
+        }
+        receiver
     }
 }

@@ -40,16 +40,16 @@ impl Display for ClientMacroError {
                     "Unknown embedding model kind: '{l}'. valid options are OpenAIEmbeddingModel"
                 )
             }
-            Self::UnsupportedArgument(arg, embedder) => {
+            Self::UnsupportedArgument(arg, client) => {
                 write!(
                     f,
-                    "Unsupported argument '{arg}' for '{embedder}' embedder type"
+                    "Unsupported argument '{arg}' for '{client}' client type"
                 )
             }
-            Self::MissingArgument(arg, embedder) => {
+            Self::MissingArgument(arg, client) => {
                 write!(
                     f,
-                    "Missing required argument '{arg}' for '{embedder}' embedder type"
+                    "Missing required argument '{arg}' for '{client}' client type"
                 )
             }
             ClientMacroError::UnrecognizedAttribute(s) => write!(f, "Unrecognized attribute {s}"),

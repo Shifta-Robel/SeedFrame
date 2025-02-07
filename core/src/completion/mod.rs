@@ -2,10 +2,14 @@ use async_trait::async_trait;
 
 use crate::embeddings::Embedder;
 
+/// Message that'll be sent in Completions
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Message {
+    /// System prompt
     Preamble(String),
+    /// Message sent by user
     User(String),
+    /// Response from the assistant
     Assistant(String),
 }
 
@@ -22,6 +26,8 @@ const DEFAULT_TOP_N: usize = 1;
 
 #[async_trait]
 pub trait CompletionModel {
+
+    /// Send message to LLM and get a replay
     async fn send(
         &self,
         message: Message,
@@ -53,6 +59,9 @@ impl<M: CompletionModel> Client<M> {
         }
     }
 
+
+    /// Prompt the LLM and get a response.
+    /// The response will be stored in the client's history
     pub async fn prompt(&mut self, prompt: &str) -> Result<Message, CompletionError> {
         let response = self
             .send_prompt(prompt, &self.history, self.temperature, self.max_tokens)
@@ -65,6 +74,8 @@ impl<M: CompletionModel> Client<M> {
         response
     }
 
+    /// Prompt the LLM with a custom history, and get a response.
+    /// Response won't be stored in the client's history
     pub async fn one_shot(
         &mut self,
         prompt: &str,

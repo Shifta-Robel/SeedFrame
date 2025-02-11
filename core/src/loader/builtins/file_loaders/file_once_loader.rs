@@ -1,9 +1,10 @@
 use async_trait::async_trait;
+use glob::Pattern;
 use tokio::sync::broadcast;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::{document::Document, loader::Loader};
-use super::utils::{parse_file, resolve_input_to_files};
+use super::{utils::{load_initial, resolve_input_to_files}, FileLoaderError};
 
 /// A builder for constructing a `FileOnceLoader`.
 ///
@@ -11,6 +12,7 @@ use super::utils::{parse_file, resolve_input_to_files};
 /// and parses the files into `Document`s.
 pub struct FileOnceLoaderBuilder {
     paths: Vec<String>,
+    patterns: Vec<glob::Pattern>
 }
 
 impl FileOnceLoaderBuilder {
@@ -18,8 +20,13 @@ impl FileOnceLoaderBuilder {
     ///
     /// # Arguments
     /// * `paths` - A vector of glob patterns to be loaded.
-    pub fn new(paths: Vec<String>) -> Self {
-        Self { paths }
+    pub fn new(paths: Vec<String>) -> Result<Self, FileLoaderError> {
+        let patterns = paths
+            .iter()
+            .map(|p| Pattern::new(p))
+            .collect::<Result<_, _>>()?;
+
+        Ok(Self { paths, patterns })
     }
 
     /// Constructs a `FileOnceLoader` instance.
@@ -33,15 +40,7 @@ impl FileOnceLoaderBuilder {
         let files = resolve_input_to_files(self.paths.iter().map(|s| s.as_str()).collect()).unwrap();
         let (tx, _rx) = broadcast::channel(files.len());
 
-        let mut documents: Vec<Document> = vec![];
-        for file in files {
-            let data = parse_file(&file).unwrap();
-            let document = Document {
-                id: file.to_string_lossy().to_string(),
-                data,
-            };
-            documents.push(document);
-        }
+        let documents = load_initial(&self.patterns);
 
         FileOnceLoader {
             tx,
@@ -69,12 +68,11 @@ impl Loader for FileOnceLoader {
     /// A `tokio::sync::broadcast::Receiver` to receive documents.
     async fn subscribe(&self) -> broadcast::Receiver<Document> {
         let receiver = self.tx.subscribe();
-        if !self.sent.load(Ordering::Acquire) {
-            if self.sent.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+        if !self.sent.load(Ordering::Acquire) &&
+            self.sent.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok() {
                 for doc in &self.documents {
                     self.tx.send(doc.clone()).unwrap();
                 }
-            }
         }
         receiver
     }

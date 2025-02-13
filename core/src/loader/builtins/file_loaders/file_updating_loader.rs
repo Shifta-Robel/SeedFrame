@@ -79,7 +79,7 @@ impl Loader for FileUpdatingLoader {
                 self.tx.send(doc).unwrap();
             });
 
-            // setup notify thred
+            // setup notify thread
             let to_be_watched = get_dirs_to_watch(
                 &self
                     .patterns
@@ -150,5 +150,98 @@ fn process_event(event: &Event, patterns: &Vec<Pattern>) -> Option<(String, Even
         EventKind::Modify(ModifyKind::Data(_)) => Some((path.to_string(), EventType::Modify)),
         EventKind::Remove(_) => Some((path.to_string(), EventType::Delete)),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use notify::{Event, EventKind};
+    use std::path::PathBuf;
+    use tempfile;
+
+    // fn process_event tests
+    #[test]
+    fn test_process_event_matching_pattern() {
+        let pattern = Pattern::new("*.txt").unwrap();
+        let event = Event {
+            kind: EventKind::Create(CreateKind::File),
+            paths: vec![PathBuf::from("test.txt")],
+            attrs: Default::default(),
+        };
+        let result = process_event(&event, &vec![pattern]);
+        assert!(result.is_some());
+        let (path, et) = result.unwrap();
+        assert_eq!(path, "test.txt");
+        assert!(matches!(et, EventType::Create));
+    }
+
+    #[test]
+    fn test_process_event_non_matching_pattern() {
+        let pattern = Pattern::new("*.md").unwrap();
+        let event = Event {
+            kind: EventKind::Create(CreateKind::File),
+            paths: vec![PathBuf::from("test.txt")],
+            attrs: Default::default(),
+        };
+        let result = process_event(&event, &vec![pattern]);
+        assert!(result.is_none());
+    }
+
+    // fn document_for_event tests
+    #[test]
+    fn test_document_for_event_create() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+        std::fs::write(&file_path, "test content").unwrap();
+
+        let doc = document_for_event(file_path.to_str().unwrap(), EventType::Create);
+        assert_eq!(doc.id, file_path.to_str().unwrap());
+        assert_eq!(doc.data, "test content");
+    }
+
+    #[test]
+    fn test_document_for_event_delete() {
+        let doc = document_for_event("test.txt", EventType::Delete);
+        assert_eq!(doc.data, "");
+    }
+
+    #[tokio::test]
+    async fn test_initial_load_sends_documents() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+        std::fs::write(&file_path, "initial").unwrap();
+
+        let builder = FileUpdatingLoaderBuilder::new(vec![
+            temp_dir.path().join("*.txt").to_str().unwrap().to_string()
+        ]).unwrap();
+        let loader = builder.build();
+
+        let mut receiver = loader.subscribe().await;
+
+        let doc = receiver.recv().await.unwrap();
+        assert_eq!(doc.id, file_path.to_str().unwrap());
+        assert_eq!(doc.data, "initial");
+    }
+
+    #[tokio::test]
+    async fn test_non_matching_files_ignored() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let matching_path = temp_dir.path().join("test.txt");
+        let non_matching_path = temp_dir.path().join("test.md");
+        std::fs::write(&matching_path, "initial").unwrap();
+
+        let builder = FileUpdatingLoaderBuilder::new(vec![
+            temp_dir.path().join("*.txt").to_str().unwrap().to_string()
+        ]).unwrap();
+        let loader = builder.build();
+
+        let mut receiver = loader.subscribe().await;
+        receiver.recv().await.unwrap();
+
+        std::fs::write(&non_matching_path, "modified").unwrap();
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        assert!(receiver.try_recv().is_err());
     }
 }

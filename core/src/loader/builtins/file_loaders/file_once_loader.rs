@@ -81,3 +81,73 @@ impl Loader for FileOnceLoader {
         receiver
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use tokio::time::{timeout, Duration};
+
+    async fn create_test_files(dir: &std::path::Path, names: &[&str]) {
+        for name in names {
+            tokio::fs::write(dir.join(name), "test content")
+                .await
+                .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn test_invalid_glob_patterns() {
+        let invalid_patterns = vec![ "*", "?", "[", "]", "{", "}", "!", "*.*", "*.txt*", "*.txt?", "*.txt[a-z]", "*.txt{a,b}", "*.txt!", "*.txt,*.pdf", "*.txt *.pdf"].iter().map(|p| p.to_string()).collect::<Vec<String>>();
+        let result = FileOnceLoaderBuilder::new(invalid_patterns);
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_loads_exact_files() {
+        let dir = tempdir().unwrap();
+        let file_names = ["t1.txt", "t2.txt"];
+        create_test_files(dir.path(), &file_names).await;
+
+        let paths = file_names
+            .iter()
+            .map(|name| dir.path().join(name).to_str().unwrap().to_string())
+            .collect();
+
+        let loader = FileOnceLoaderBuilder::new(paths).unwrap().build().unwrap();
+        let mut receiver = loader.subscribe().await;
+
+        let mut received = Vec::new();
+        while let Ok(doc) = timeout(Duration::from_millis(100), receiver.recv()).await {
+            received.push(doc.unwrap());
+        }
+
+        assert_eq!(received.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_glob_pattern_matching() {
+        let dir = tempdir().unwrap();
+        create_test_files(dir.path(), &["t1.txt", "t2.txt", "img.jpg"]).await;
+
+        let glob_path = dir.path().join("*.txt").to_str().unwrap().to_string();
+        let loader = FileOnceLoaderBuilder::new(vec![glob_path]).unwrap().build().unwrap();
+
+        let mut receiver = loader.subscribe().await;
+        let mut received = Vec::new();
+        while let Ok(doc) = timeout(Duration::from_millis(100), receiver.recv()).await {
+            received.push(doc.unwrap());
+        }
+
+        assert_eq!(received.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_no_matching_files() {
+        let dir = tempdir().unwrap();
+        let glob_path = dir.path().join("*.md").to_str().unwrap().to_string();
+        
+        let loader = FileOnceLoaderBuilder::new(vec![glob_path]).unwrap().build();
+        assert!(loader.is_err());
+    }
+}

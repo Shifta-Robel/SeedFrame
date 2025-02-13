@@ -14,3 +14,7 @@ tokio = { version = "1.42.0", features = ["full"] }
 uuid = {version="1.11.1", features = ["v4"]}
 walkdir = "2.5.0"
 seedframe_macros =  { path = "../proc_macros"}
+notify = "8.0.0"
+
+[dev-dependencies]
+tempfile = "3.16.0"

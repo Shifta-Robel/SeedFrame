@@ -1,7 +1,9 @@
 use std::{io, path::{Path,PathBuf}};
-use glob::glob;
+use glob::{glob, Pattern};
 use walkdir::WalkDir;
 use pdf_extract::extract_text;
+
+use crate::document::Document;
 
 /// Resolves a list of glob patterns into a list of file paths.
 ///
@@ -62,4 +64,43 @@ pub(super) fn parse_file(file_path: &Path) -> io::Result<String> {
     };
 
     Ok(content)
+}
+
+pub(super) fn load_initial(patterns: &[Pattern]) -> Vec<Document> {
+    let files = resolve_input_to_files(patterns.iter().map(|s| s.as_str()).collect()).unwrap();
+    let mut documents: Vec<Document> = vec![];
+    for file in files {
+        let data = parse_file(&file).unwrap();
+        let document = Document {
+            id: file.to_string_lossy().to_string(),
+            data,
+        };
+        documents.push(document);
+    }
+    documents
+}
+
+pub(super) fn extract_parent_dir(pattern: &str) -> PathBuf {
+    let glob_indicators = ['*', '?', '[', '!'];
+    let dirs: Vec<_> = pattern.split('/').collect();
+    let idx = dirs.iter()
+        .position(|part| glob_indicators.iter().any(|&c| part.contains(c)))
+        .unwrap_or(dirs.len());
+
+    let base_path = dirs[..idx].join("/");
+    let path = Path::new(&base_path);
+    let path = if path.is_file() {
+        path.parent().unwrap()
+    } else {
+        path
+    };
+
+    std::fs::canonicalize(path).unwrap()
+}
+
+pub(super) fn get_dirs_to_watch(paths: &[PathBuf]) -> Vec<PathBuf> {
+    paths
+        .iter().filter(|path| {
+            !paths.iter().any(|other| *path != other && path.starts_with(other))
+        }).cloned().collect()
 }

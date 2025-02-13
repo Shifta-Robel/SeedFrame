@@ -18,6 +18,7 @@ use crate::document::Document;
 #[derive(Debug)]
 pub enum FileLoaderError {
     InvalidGlobPattern(glob::PatternError),
+    NoMatchingDocuments,
     FailedToSendDocument(SendError<Document>),
 }
 

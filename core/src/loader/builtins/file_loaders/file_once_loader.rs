@@ -4,7 +4,7 @@ use tokio::sync::broadcast;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::{document::Document, loader::Loader};
-use super::{utils::{load_initial, resolve_input_to_files}, FileLoaderError};
+use super::{utils::load_initial, FileLoaderError};
 
 /// A builder for constructing a `FileOnceLoader`.
 ///
@@ -39,18 +39,18 @@ impl FileOnceLoaderBuilder {
     /// `Document`s, and creates a broadcast channel for the documents.
     ///
     /// # Returns
-    /// A `FileOnceLoader` instance.
-    pub fn build(self) -> FileOnceLoader {
-        let files = resolve_input_to_files(self.paths.iter().map(|s| s.as_str()).collect()).unwrap();
-        let (tx, _rx) = broadcast::channel(files.len());
+    /// * `Ok(FileOnceLoader)` - A new `FileOnceLoader` instance.
+    /// * `Err(FileLoaderError)` - An error if build fails.
+    pub fn build(self) -> Result<FileOnceLoader, FileLoaderError> {
+        let documents = load_initial(&self.evaluated);
+        if documents.len() == 0 {Err(FileLoaderError::NoMatchingDocuments)?};
+        let (tx, _rx) = broadcast::channel(documents.len());
 
-        let documents = load_initial(&self.patterns);
-
-        FileOnceLoader {
+        Ok(FileOnceLoader {
             tx,
             documents,
             sent: AtomicBool::new(false),
-        }
+        })
     }
 }
 

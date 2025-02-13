@@ -138,7 +138,7 @@ fn generate_builder(
             quote! {
                 #vis fn build() -> Self {
                     use seedframe::loader::builtins::file_loaders::file_once_loader::FileOnceLoaderBuilder;
-                    Self { inner: (FileOnceLoaderBuilder::new(vec![#path.to_string()]).unwrap().build()) }
+                    Self { inner: (FileOnceLoaderBuilder::new(vec![#path.to_string()]).unwrap().build().unwrap()) }
                 }
             }
         }

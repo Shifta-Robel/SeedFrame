@@ -21,6 +21,8 @@ use crate::{
 
 use super::{utils::load_initial, FileLoaderError};
 
+const DEFAULT_CHANNEL_CAPACITY: usize = 20;
+
 pub struct FileUpdatingLoaderBuilder {
     glob_patterns: Vec<String>,
     evaluated_patterns: Vec<Pattern>,

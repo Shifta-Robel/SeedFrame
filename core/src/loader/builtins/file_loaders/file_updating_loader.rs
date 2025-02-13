@@ -22,8 +22,8 @@ use crate::{
 use super::{utils::load_initial, FileLoaderError};
 
 pub struct FileUpdatingLoaderBuilder {
-    paths: Vec<String>,
-    glob_patterns: Vec<Pattern>,
+    glob_patterns: Vec<String>,
+    evaluated_patterns: Vec<Pattern>,
 }
 
 impl FileUpdatingLoaderBuilder {
@@ -34,18 +34,19 @@ impl FileUpdatingLoaderBuilder {
             .collect::<Result<_, _>>()?;
 
         Ok(Self {
-            paths,
-            glob_patterns,
+            glob_patterns: paths,
+            evaluated_patterns: glob_patterns,
         })
     }
 
     pub fn build(self) -> FileUpdatingLoader {
         let files =
-            resolve_input_to_files(self.paths.iter().map(|s| s.as_str()).collect()).unwrap();
-        let (tx, _rx) = broadcast::channel(files.len());
+            resolve_input_to_files(self.glob_patterns.iter().map(|s| s.as_str()).collect()).unwrap();
+        let capacity = if files.len() == 0 {DEFAULT_CHANNEL_CAPACITY} else {files.len()};
+        let (tx, _rx) = broadcast::channel(capacity);
 
         FileUpdatingLoader {
-            patterns: self.glob_patterns,
+            patterns: self.evaluated_patterns,
             tx,
             sent: AtomicBool::new(false),
         }
@@ -63,7 +64,7 @@ impl Loader for FileUpdatingLoader {
     /// Subscribes to the loader's broadcast channel to receive documents.
     ///
     /// # Returns
-    /// A `tokio::sync::broadcast::Receiver` to receive documents.
+    /// A `tokio::sync::broadcast::Receiver<Document>`.
     async fn subscribe(&self) -> broadcast::Receiver<Document> {
         let receiver = self.tx.subscribe();
         if !self.sent.load(Ordering::Acquire)

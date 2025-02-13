@@ -11,27 +11,31 @@ use super::{utils::{load_initial, resolve_input_to_files}, FileLoaderError};
 /// it takes a list of glob patterns, resolves them to actual files,
 /// and parses the files into `Document`s.
 pub struct FileOnceLoaderBuilder {
-    paths: Vec<String>,
-    patterns: Vec<glob::Pattern>
+    glob_patterns: Vec<String>,
+    evaluated: Vec<glob::Pattern>
 }
 
 impl FileOnceLoaderBuilder {
     /// Creates a new `FileOnceLoaderBuilder` instance.
     ///
     /// # Arguments
-    /// * `paths` - A vector of glob patterns to be loaded.
-    pub fn new(paths: Vec<String>) -> Result<Self, FileLoaderError> {
-        let patterns = paths
+    /// * `glob_patterns` - A vector of glob pattern strings to be loaded.
+    ///
+    /// # Returns
+    /// * `Ok(Self)` - A new `FileOnceLoaderBuilder` instance.
+    /// * `Err(FileLoaderError)` - An error if initialization fails.
+    pub fn new(glob_patterns: Vec<String>) -> Result<Self, FileLoaderError> {
+        let evaluated = glob_patterns
             .iter()
             .map(|p| Pattern::new(p))
             .collect::<Result<_, _>>()?;
 
-        Ok(Self { paths, patterns })
+        Ok(Self { glob_patterns, evaluated })
     }
 
     /// Constructs a `FileOnceLoader` instance.
     ///
-    /// This method resolves the provided glob patterns, parses the files into
+    /// This method resolves the glob patterns, parses the files into
     /// `Document`s, and creates a broadcast channel for the documents.
     ///
     /// # Returns
@@ -65,7 +69,7 @@ impl Loader for FileOnceLoader {
     /// Subscribes to the loader's broadcast channel to receive documents.
     ///
     /// # Returns
-    /// A `tokio::sync::broadcast::Receiver` to receive documents.
+    /// A `tokio::sync::broadcast::Receiver<Document>`.
     async fn subscribe(&self) -> broadcast::Receiver<Document> {
         let receiver = self.tx.subscribe();
         if !self.sent.load(Ordering::Acquire) &&

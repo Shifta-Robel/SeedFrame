@@ -66,7 +66,7 @@ pub(super) fn parse_file(file_path: &Path) -> io::Result<String> {
     Ok(content)
 }
 
-pub(super) fn load_initial(patterns: &Vec<Pattern>) -> Vec<Document> {
+pub(super) fn load_initial(patterns: &[Pattern]) -> Vec<Document> {
     let files = resolve_input_to_files(patterns.iter().map(|s| s.as_str()).collect()).unwrap();
     let mut documents: Vec<Document> = vec![];
     for file in files {
@@ -98,7 +98,7 @@ pub(super) fn extract_parent_dir(pattern: &str) -> PathBuf {
     std::fs::canonicalize(path).unwrap()
 }
 
-pub(super) fn get_dirs_to_watch(paths: &Vec<PathBuf>) -> Vec<PathBuf> {
+pub(super) fn get_dirs_to_watch(paths: &[PathBuf]) -> Vec<PathBuf> {
     paths
         .iter().filter(|path| {
             !paths.iter().any(|other| *path != other && path.starts_with(other))

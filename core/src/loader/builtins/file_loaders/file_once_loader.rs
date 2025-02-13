@@ -43,7 +43,7 @@ impl FileOnceLoaderBuilder {
     /// * `Err(FileLoaderError)` - An error if build fails.
     pub fn build(self) -> Result<FileOnceLoader, FileLoaderError> {
         let documents = load_initial(&self.evaluated);
-        if documents.len() == 0 {Err(FileLoaderError::NoMatchingDocuments)?};
+        if documents.is_empty() {Err(FileLoaderError::NoMatchingDocuments)?};
         let (tx, _rx) = broadcast::channel(documents.len());
 
         Ok(FileOnceLoader {

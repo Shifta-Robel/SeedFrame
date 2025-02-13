@@ -57,12 +57,14 @@ impl Embedder {
         for loader in &self.loaders {
             let embedding_model = Arc::clone(&self.embedding_model);
             let vector_store = Arc::clone(&self.vector_store);
-            let loader = Arc::clone(&*loader);
+            let loader = Arc::clone(loader);
 
             let mut listener = loader.subscribe().await;
             tokio::spawn(async move {
                 while let Ok(doc) = listener.recv().await {
-                    let embedded_data = embedding_model.embed(&doc.data).await.unwrap();
+                    let embedded_data = if !&doc.data.is_empty() {
+                        embedding_model.embed(&doc.data).await.unwrap()
+                    } else { vec![] };
                     vector_store
                         .lock()
                         .await

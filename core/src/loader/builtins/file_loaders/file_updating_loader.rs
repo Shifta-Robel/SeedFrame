@@ -44,7 +44,7 @@ impl FileUpdatingLoaderBuilder {
     pub fn build(self) -> FileUpdatingLoader {
         let files =
             resolve_input_to_files(self.glob_patterns.iter().map(|s| s.as_str()).collect()).unwrap();
-        let capacity = if files.len() == 0 {DEFAULT_CHANNEL_CAPACITY} else {files.len()};
+        let capacity = if files.is_empty() {DEFAULT_CHANNEL_CAPACITY} else {files.len()};
         let (tx, _rx) = broadcast::channel(capacity);
 
         FileUpdatingLoader {
@@ -99,16 +99,14 @@ impl Loader for FileUpdatingLoader {
                 }
 
                 let mut last_event_time = Instant::now();
-                let debounce_duration = Duration::from_millis(1000);
+                let debounce_duration = Duration::from_millis(500);
                 loop {
                     let now = Instant::now();
                     if now.duration_since(last_event_time) >= debounce_duration {
                         for event in evt_rx.iter() {
                             let event = event.unwrap();
                             let out = process_event(&event, &pc);
-                            if let None = out {
-                                continue;
-                            }
+                            if out.is_none() { continue; }
                             let out = out.unwrap();
                             txc.send(document_for_event(out.0.as_str(), out.1)).unwrap();
                             last_event_time = now;
@@ -139,7 +137,7 @@ fn document_for_event(path: &str, et: EventType) -> Document {
     }
 }
 
-fn process_event(event: &Event, patterns: &Vec<Pattern>) -> Option<(String, EventType)> {
+fn process_event(event: &Event, patterns: &[Pattern]) -> Option<(String, EventType)> {
     let path = event.paths.first()?.to_str()?;
     if !patterns.iter().any(|p| p.matches(path)) {
         return None;

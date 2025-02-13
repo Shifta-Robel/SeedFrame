@@ -23,24 +23,43 @@ use super::{utils::load_initial, FileLoaderError};
 
 const DEFAULT_CHANNEL_CAPACITY: usize = 20;
 
+/// A builder for constructing a `FileUpdatingLoader`.
+///
+/// it takes a list of glob patterns, resolves them to actual files,
+/// and parses the files into `Document`s.
 pub struct FileUpdatingLoaderBuilder {
     glob_patterns: Vec<String>,
     evaluated_patterns: Vec<Pattern>,
 }
 
 impl FileUpdatingLoaderBuilder {
-    pub fn new(paths: Vec<String>) -> Result<Self, FileLoaderError> {
-        let glob_patterns = paths
+    /// Creates a new `FileUpdatingLoaderBuilder` instance.
+    ///
+    /// # Arguments
+    /// * `glob_patterns` - A vector of glob pattern strings to be loaded.
+    ///
+    /// # Returns
+    /// * `Ok(Self)` - A new `FileUpdatingLoaderBuilder` instance.
+    /// * `Err(FileLoaderError)` - An error if initialization fails.
+    pub fn new(glob_patterns: Vec<String>) -> Result<Self, FileLoaderError> {
+        let evaluated_patterns = glob_patterns
             .iter()
             .map(|p| Pattern::new(p))
             .collect::<Result<_, _>>()?;
 
         Ok(Self {
-            glob_patterns: paths,
-            evaluated_patterns: glob_patterns,
+            glob_patterns,
+            evaluated_patterns,
         })
     }
 
+    /// Constructs a `FileUpdatingLoader` instance.
+    ///
+    /// This method resolves the glob patterns, parses the files into
+    /// `Document`s, and creates a broadcast channel for the documents.
+    ///
+    /// # Returns
+    /// * `FileOnceLoader` - A new `FileOnceLoader` instance.
     pub fn build(self) -> FileUpdatingLoader {
         let files =
             resolve_input_to_files(self.glob_patterns.iter().map(|s| s.as_str()).collect()).unwrap();
@@ -55,6 +74,15 @@ impl FileUpdatingLoaderBuilder {
     }
 }
 
+/// Watches files matching glob patterns and emits document updates
+///
+/// Implements the [`Loader`] trait. When subscribed:
+/// 1. Immediately sends all matching documents
+/// 2. Watches filesystem for changes
+/// 3. Sends updates on changes
+///
+/// Deleted files are sent with empty content. Multiple subscribers are supported
+/// via broadcast channel.
 pub struct FileUpdatingLoader {
     tx: broadcast::Sender<Document>,
     sent: AtomicBool,

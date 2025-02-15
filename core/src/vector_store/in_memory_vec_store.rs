@@ -1,32 +1,54 @@
 use async_trait::async_trait;
 use tokio::sync::RwLock;
+use tracing::{debug, error, info, instrument};
 use std::collections::HashMap;
 
 use crate::embeddings::embedding::Embedding;
 use super::{VectorStore, VectorStoreError, cosine_similarity};
 
+#[derive(Debug)]
 pub struct InMemoryVectorStore{
     embeddings: RwLock<HashMap<String, Embedding>>
 }
 
 impl InMemoryVectorStore {
     pub fn new() -> Self {
+        info!("Creating a new InMemoryVectorStore");
         Self { embeddings: RwLock::new(HashMap::new()) }
     }
 }
 
 #[async_trait]
 impl VectorStore for InMemoryVectorStore {
+    #[instrument(skip(self))]
     async fn get_by_id(&self, id: String) -> Result<Embedding, VectorStoreError>{
         let embeddings = self.embeddings.read().await;
-        embeddings.get(&id).ok_or(VectorStoreError::EmbeddingNotFound).map(|v| v.clone())
+        let res = embeddings.get(&id).ok_or(VectorStoreError::EmbeddingNotFound).map(|v| v.clone());
+        match res {
+            Ok(_) => debug!("Found embedding for document"),
+            Err(_) => error!("Failed to find embedding for document"),
+        };
+        res
     }
 
     async fn store(&self, embedding: Embedding) -> Result<(), VectorStoreError>{
         let mut embeddings = self.embeddings.write().await;
         if embedding.raw_data.is_empty() {
-            embeddings.remove(&embedding.id).ok_or(VectorStoreError::EmbeddingNotFound)?;
+            let res = embeddings.remove(&embedding.id).ok_or(VectorStoreError::EmbeddingNotFound);
+            if let Err(e) = res.as_ref() {
+                    error!("Failed to remove document :({}) from InMemoryVectorStore: {e:?}", embedding.id.clone());
+            } else {
+                    info!("Removed document :({}) from InMemoryVectorStore", embedding.id.clone());
+            }
+            res?;
         }else{
+            if tracing::enabled!(tracing::Level::INFO) {
+                if embeddings.contains_key(&embedding.id.clone()) {
+                    info!("Updated document :({}) in the InMemoryVectorStore", embedding.id.clone());
+                }else {
+                    info!("Inserted document :({}) to the InMemoryVectorStore", embedding.id.clone());
+                }
+            }
             embeddings.insert(embedding.id.clone(), embedding);
         }
         Ok(())
@@ -50,8 +72,13 @@ impl VectorStore for InMemoryVectorStore {
 mod tests {
     use super::*;
 
+    fn init_tracing(){
+        tracing_subscriber::fmt().init();
+    }
+
     #[tokio::test]
     async fn test_get_by_id() {
+        init_tracing();
         let embedding = Embedding {
             id: "id".to_string(),
             raw_data: "hello world".to_string(),
@@ -74,6 +101,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_store() {
+        init_tracing();
         let store = InMemoryVectorStore {
             embeddings: RwLock::new(HashMap::new()),
         };

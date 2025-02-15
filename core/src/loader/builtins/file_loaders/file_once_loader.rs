@@ -1,11 +1,13 @@
 use async_trait::async_trait;
 use glob::Pattern;
 use tokio::sync::broadcast;
+use tracing::{debug, error, info, instrument};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::{document::Document, loader::Loader};
 use super::{utils::load_initial, FileLoaderError};
 
+#[derive(Debug)]
 /// A builder for constructing a `FileOnceLoader`.
 ///
 /// it takes a list of glob patterns, resolves them to actual files,
@@ -16,6 +18,7 @@ pub struct FileOnceLoaderBuilder {
 }
 
 impl FileOnceLoaderBuilder {
+    #[instrument]
     /// Creates a new `FileOnceLoaderBuilder` instance.
     ///
     /// # Arguments
@@ -25,14 +28,16 @@ impl FileOnceLoaderBuilder {
     /// * `Ok(Self)` - A new `FileOnceLoaderBuilder` instance.
     /// * `Err(FileLoaderError)` - An error if initialization fails.
     pub fn new(glob_patterns: Vec<String>) -> Result<Self, FileLoaderError> {
-        let evaluated = glob_patterns
+        let evaluated: Vec<Pattern> = glob_patterns
             .iter()
             .map(|p| Pattern::new(p))
             .collect::<Result<_, _>>()?;
+        info!("Successfully evaluated {} glob patterns", evaluated.len());
 
         Ok(Self { glob_patterns, evaluated })
     }
 
+    #[instrument(fields(self = format!("FileOnceLoaderBuilder {{glob_patterns: {:?}}}", self.glob_patterns)))]
     /// Constructs a `FileOnceLoader` instance.
     ///
     /// This method resolves the glob patterns, parses the files into
@@ -43,8 +48,12 @@ impl FileOnceLoaderBuilder {
     /// * `Err(FileLoaderError)` - An error if build fails.
     pub fn build(self) -> Result<FileOnceLoader, FileLoaderError> {
         let documents = load_initial(&self.evaluated);
-        if documents.is_empty() {Err(FileLoaderError::NoMatchingDocuments)?};
+        if documents.is_empty() {
+            error!("No documents matched the provided glob patterns");
+            Err(FileLoaderError::NoMatchingDocuments)?
+        };
         let (tx, _rx) = broadcast::channel(documents.len());
+        debug!("broadcast channel with capacity: {} created", documents.len());
 
         Ok(FileOnceLoader {
             tx,
@@ -54,6 +63,7 @@ impl FileOnceLoaderBuilder {
     }
 }
 
+#[derive(Debug)]
 /// A loader that reads documents from files and sends them to subscribers
 /// via a broadcast channel.
 ///
@@ -66,17 +76,23 @@ pub struct FileOnceLoader {
 
 #[async_trait]
 impl Loader for FileOnceLoader {
+    #[instrument(fields(self = format!("FileOnceLoader {{sent: {}}}", self.sent.load(Ordering::Acquire))))]
     /// Subscribes to the loader's broadcast channel to receive documents.
     ///
     /// # Returns
     /// A `tokio::sync::broadcast::Receiver<Document>`.
     async fn subscribe(&self) -> broadcast::Receiver<Document> {
         let receiver = self.tx.subscribe();
+        let mut sent_docs_count = 0;
         if !self.sent.load(Ordering::Acquire) &&
             self.sent.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok() {
                 for doc in &self.documents {
-                    self.tx.send(doc.clone()).unwrap();
+                    if let Err(e) = self.tx.send(doc.clone()) {
+                        error!("Loader failed to send document: {} to subscribers", e.0.id);
+                    } else {sent_docs_count += 1}
                 }
+                info!("Loader sent {} of {} documents to subscribers",
+                    self.documents.len(), sent_docs_count);
         }
         receiver
     }
@@ -96,6 +112,10 @@ mod tests {
         }
     }
 
+    fn init_tracing(){
+        tracing_subscriber::fmt().init();
+    }
+
     #[tokio::test]
     async fn test_invalid_glob_patterns() {
         let invalid_patterns = vec![ "*", "?", "[", "]", "{", "}", "!", "*.*", "*.txt*", "*.txt?", "*.txt[a-z]", "*.txt{a,b}", "*.txt!", "*.txt,*.pdf", "*.txt *.pdf"].iter().map(|p| p.to_string()).collect::<Vec<String>>();
@@ -105,6 +125,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_loads_exact_files() {
+        init_tracing();
         let dir = tempdir().unwrap();
         let file_names = ["t1.txt", "t2.txt"];
         create_test_files(dir.path(), &file_names).await;
@@ -127,6 +148,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_glob_pattern_matching() {
+        init_tracing();
         let dir = tempdir().unwrap();
         create_test_files(dir.path(), &["t1.txt", "t2.txt", "img.jpg"]).await;
 
@@ -144,6 +166,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_no_matching_files() {
+        init_tracing();
         let dir = tempdir().unwrap();
         let glob_path = dir.path().join("*.md").to_str().unwrap().to_string();
         

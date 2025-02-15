@@ -1,5 +1,6 @@
 use std::{io, path::{Path,PathBuf}};
 use glob::{glob, Pattern};
+use tracing::{error, info, instrument};
 use walkdir::WalkDir;
 use pdf_extract::extract_text;
 
@@ -39,6 +40,7 @@ pub(super) fn resolve_input_to_files(inputs: Vec<&str>) -> io::Result<Vec<PathBu
     Ok(files)
 }
 
+#[instrument]
 /// Parses the content of a file based on its extension.
 ///
 /// This function reads the content of a file. If the file is a PDF, it uses the `pdf_extract` crate
@@ -54,6 +56,7 @@ pub(super) fn parse_file(file_path: &Path) -> io::Result<String> {
     let content = if let Some(ext) = file_path.extension() {
         if ext == "pdf" {
             extract_text(file_path).map_err(|e| {
+                error!("Failed to parse PDF: {e}");
                 io::Error::new(io::ErrorKind::Other, format!("Failed to parse PDF: {e}"))
             })?
         } else {
@@ -62,7 +65,7 @@ pub(super) fn parse_file(file_path: &Path) -> io::Result<String> {
     } else {
         std::fs::read_to_string(file_path)?
     };
-
+    info!("Successfully parsed file: {:?}", file_path);
     Ok(content)
 }
 
@@ -75,6 +78,7 @@ pub(super) fn load_initial(patterns: &[Pattern]) -> Vec<Document> {
             id: file.to_string_lossy().to_string(),
             data,
         };
+        info!("Successfully loaded document: {:?}", document.id.clone());
         documents.push(document);
     }
     documents

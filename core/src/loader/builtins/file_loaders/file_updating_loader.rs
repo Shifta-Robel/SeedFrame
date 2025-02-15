@@ -4,6 +4,7 @@ use notify::{
     event::{CreateKind, ModifyKind},
     Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
 };
+use tracing::{debug, error, info, instrument};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -22,7 +23,9 @@ use crate::{
 use super::{utils::load_initial, FileLoaderError};
 
 const DEFAULT_CHANNEL_CAPACITY: usize = 20;
+const DEBOUNCE_DURATION_MILLIS: u64= 500;
 
+#[derive(Debug)]
 /// A builder for constructing a `FileUpdatingLoader`.
 ///
 /// it takes a list of glob patterns, resolves them to actual files,
@@ -33,6 +36,7 @@ pub struct FileUpdatingLoaderBuilder {
 }
 
 impl FileUpdatingLoaderBuilder {
+    #[instrument]
     /// Creates a new `FileUpdatingLoaderBuilder` instance.
     ///
     /// # Arguments
@@ -42,10 +46,11 @@ impl FileUpdatingLoaderBuilder {
     /// * `Ok(Self)` - A new `FileUpdatingLoaderBuilder` instance.
     /// * `Err(FileLoaderError)` - An error if initialization fails.
     pub fn new(glob_patterns: Vec<String>) -> Result<Self, FileLoaderError> {
-        let evaluated_patterns = glob_patterns
+        let evaluated_patterns: Vec<Pattern> = glob_patterns
             .iter()
             .map(|p| Pattern::new(p))
             .collect::<Result<_, _>>()?;
+        info!("Successfully evaluated {} glob patterns", evaluated_patterns.len());
 
         Ok(Self {
             glob_patterns,
@@ -53,6 +58,7 @@ impl FileUpdatingLoaderBuilder {
         })
     }
 
+    #[instrument]
     /// Constructs a `FileUpdatingLoader` instance.
     ///
     /// This method resolves the glob patterns, parses the files into
@@ -65,6 +71,7 @@ impl FileUpdatingLoaderBuilder {
             resolve_input_to_files(self.glob_patterns.iter().map(|s| s.as_str()).collect()).unwrap();
         let capacity = if files.is_empty() {DEFAULT_CHANNEL_CAPACITY} else {files.len()};
         let (tx, _rx) = broadcast::channel(capacity);
+        debug!("broadcast channel with capacity: {} created", capacity);
 
         FileUpdatingLoader {
             patterns: self.evaluated_patterns,
@@ -74,6 +81,7 @@ impl FileUpdatingLoaderBuilder {
     }
 }
 
+#[derive(Debug)]
 /// Watches files matching glob patterns and emits document updates
 ///
 /// Implements the [`Loader`] trait. When subscribed:
@@ -91,6 +99,7 @@ pub struct FileUpdatingLoader {
 
 #[async_trait]
 impl Loader for FileUpdatingLoader {
+    #[instrument(fields(self = format!("FileUpdatingLoader {{sent: {}}}", self.sent.load(Ordering::Acquire))))]
     /// Subscribes to the loader's broadcast channel to receive documents.
     ///
     /// # Returns
@@ -103,9 +112,16 @@ impl Loader for FileUpdatingLoader {
                 .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
                 .is_ok()
         {
-            load_initial(&self.patterns).into_iter().for_each(|doc| {
-                self.tx.send(doc).unwrap();
+            let initial_docs = load_initial(&self.patterns);
+            let mut sent_docs_count = 0;
+            let total_docs_count = initial_docs.len();
+            initial_docs.into_iter().for_each(|doc| {
+                if let Err(e) = self.tx.send(doc) {
+                    error!("Loader failed to send document: {} to subscribers", e.0.id);
+                } else { sent_docs_count += 1; }
             });
+            info!("Loader sent {} of {} initial documents to subscribers",
+                sent_docs_count, total_docs_count);
 
             // setup notify thread
             let to_be_watched = get_dirs_to_watch(
@@ -123,11 +139,16 @@ impl Loader for FileUpdatingLoader {
                 let mut watcher = RecommendedWatcher::new(evt_tx, Config::default()).unwrap();
 
                 for path in &to_be_watched.clone() {
-                    watcher.watch(path, RecursiveMode::Recursive).unwrap()
+                    if let Err(e) = watcher.watch(path, RecursiveMode::Recursive) {
+                        error!("Failed to add path {} to watcher: {}", path.to_str().unwrap_or("unknown"),e);
+                    } else {
+                        info!("Added path {} to watcher", path.to_str().unwrap_or("unknown"));
+                    }
+
                 }
 
                 let mut last_event_time = Instant::now();
-                let debounce_duration = Duration::from_millis(500);
+                let debounce_duration = Duration::from_millis(DEBOUNCE_DURATION_MILLIS);
                 loop {
                     let now = Instant::now();
                     if now.duration_since(last_event_time) >= debounce_duration {
@@ -147,27 +168,32 @@ impl Loader for FileUpdatingLoader {
     }
 }
 
+#[derive(Debug)]
 enum EventType {
     Modify,
     Create,
     Delete,
 }
 
+#[instrument]
 fn document_for_event(path: &str, et: EventType) -> Document {
     let file = std::path::Path::new(&path);
     let data = match et {
         EventType::Modify | EventType::Create => parse_file(file).unwrap(),
         EventType::Delete => "".to_string(),
     };
+    debug!("Created document for {} with event type {:?}", path, et);
     Document {
         id: path.to_string(),
         data,
     }
 }
 
+#[instrument]
 fn process_event(event: &Event, patterns: &[Pattern]) -> Option<(String, EventType)> {
     let path = event.paths.first()?.to_str()?;
     if !patterns.iter().any(|p| p.matches(path)) {
+        debug!("Event path {} does not match any patterns", path);
         return None;
     }
 
@@ -175,7 +201,10 @@ fn process_event(event: &Event, patterns: &[Pattern]) -> Option<(String, EventTy
         EventKind::Create(CreateKind::File) => Some((path.to_string(), EventType::Create)),
         EventKind::Modify(ModifyKind::Data(_)) => Some((path.to_string(), EventType::Modify)),
         EventKind::Remove(_) => Some((path.to_string(), EventType::Delete)),
-        _ => None,
+        _ => {
+            debug!("Unhandled event type {:?}", event.kind);
+            None
+        },
     }
 }
 
@@ -186,9 +215,14 @@ mod tests {
     use std::path::PathBuf;
     use tempfile;
 
+    fn init_tracing(){
+        tracing_subscriber::fmt().init();
+    }
+
     // fn process_event tests
     #[test]
     fn test_process_event_matching_pattern() {
+        init_tracing();
         let pattern = Pattern::new("*.txt").unwrap();
         let event = Event {
             kind: EventKind::Create(CreateKind::File),
@@ -204,6 +238,7 @@ mod tests {
 
     #[test]
     fn test_process_event_non_matching_pattern() {
+        init_tracing();
         let pattern = Pattern::new("*.md").unwrap();
         let event = Event {
             kind: EventKind::Create(CreateKind::File),
@@ -217,6 +252,7 @@ mod tests {
     // fn document_for_event tests
     #[test]
     fn test_document_for_event_create() {
+        init_tracing();
         let temp_dir = tempfile::tempdir().unwrap();
         let file_path = temp_dir.path().join("test.txt");
         std::fs::write(&file_path, "test content").unwrap();
@@ -228,12 +264,14 @@ mod tests {
 
     #[test]
     fn test_document_for_event_delete() {
+        init_tracing();
         let doc = document_for_event("test.txt", EventType::Delete);
         assert_eq!(doc.data, "");
     }
 
     #[tokio::test]
     async fn test_initial_load_sends_documents() {
+        init_tracing();
         let temp_dir = tempfile::tempdir().unwrap();
         let file_path = temp_dir.path().join("test.txt");
         std::fs::write(&file_path, "initial").unwrap();
@@ -252,6 +290,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_non_matching_files_ignored() {
+        init_tracing();
         let temp_dir = tempfile::tempdir().unwrap();
         let matching_path = temp_dir.path().join("test.txt");
         let non_matching_path = temp_dir.path().join("test.md");

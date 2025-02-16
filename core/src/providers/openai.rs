@@ -9,6 +9,7 @@ use serde_json::json;
 pub struct OpenAICompletionModel {
     api_key: String,
     api_url: String,
+    client: reqwest::Client,
     model: String,
 }
 
@@ -16,6 +17,7 @@ impl OpenAICompletionModel {
     pub fn new(api_key: String, api_url: String, model: String) -> Self {
         Self {
             api_key,
+            client: reqwest::Client::new(),
             api_url,
             model,
         }
@@ -50,8 +52,6 @@ impl CompletionModel for OpenAICompletionModel {
         temperature: f64,
         max_tokens: usize,
     ) -> Result<(Message, TokenUsage), CompletionError> {
-        let client = Client::new();
-
         let mut messages = history.clone();
         messages.push(message);
         let messages: Vec<_> = messages
@@ -66,7 +66,7 @@ impl CompletionModel for OpenAICompletionModel {
             "max_tokens": max_tokens,
         });
 
-        let response = client
+        let response = self.client
             .post(&self.api_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
@@ -178,6 +178,7 @@ mod tests {
 
     #[tokio::test]
     async fn simple_openai_completion_request() {
+        tracing_subscriber::fmt().init();
         let api_key = std::env::var("SEEDFRAME_TEST_OPENAI_KEY")
             .unwrap()
             .to_string();

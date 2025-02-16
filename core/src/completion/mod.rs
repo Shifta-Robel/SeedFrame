@@ -1,6 +1,7 @@
 use async_trait::async_trait;
+use tracing::info;
 
-use crate::embeddings::Embedder;
+use crate::{embeddings::Embedder, vector_store::VectorStoreError};
 
 /// Message that'll be sent in Completions
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -27,7 +28,14 @@ pub(crate) type MessageHistory = Vec<Message>;
 pub enum CompletionError {
     ProviderError(String),
     RequestError(String),
-    ParseError(String)
+    ParseError(String),
+    FailedContextFetch(VectorStoreError)
+}
+
+impl From<VectorStoreError> for CompletionError {
+    fn from(value: VectorStoreError) -> Self {
+        Self::FailedContextFetch(value)
+    }
 }
 
 const DEFAULT_TOP_N: usize = 1;
@@ -69,6 +77,17 @@ impl<M: CompletionModel> Client<M> {
         }
     }
 
+    pub fn clear_history(&mut self) {
+        self.history.retain(|m| matches!(m, Message::Preamble(_)));
+    }
+    
+    pub fn load_history(&mut self, history: MessageHistory) {
+        self.history =  history;
+    }
+
+    pub fn export_history(&self) -> &MessageHistory {
+        &self.history
+    }
 
     /// Prompt the LLM and get a response.
     /// The response will be stored in the client's history
@@ -79,6 +98,9 @@ impl<M: CompletionModel> Client<M> {
 
         self.history.push(response.clone());
         self.update_token_usage(&token_usage);
+        if token_usage.total_tokens.is_some() {
+            info!("Prompt used up: {:?} tokens, Total tokens used: {:?}", token_usage.total_tokens, self.token_usage.total_tokens);
+        }
 
         Ok(response)
     }
@@ -100,6 +122,9 @@ impl<M: CompletionModel> Client<M> {
             .send_prompt( prompt, &history.unwrap_or(self.history.clone()), self.temperature, self.max_tokens).await?;
 
         self.update_token_usage(&token_usage);
+        if token_usage.total_tokens.is_some() {
+            info!("Prompt used up: {:?} tokens, Total tokens used: {:?}", token_usage.total_tokens, self.token_usage.total_tokens);
+        }
 
         Ok(response)
     }
@@ -111,7 +136,7 @@ impl<M: CompletionModel> Client<M> {
         temperature: f64,
         max_tokens: usize,
     ) -> Result<(Message, TokenUsage), CompletionError> {
-        let context = self.get_context(prompt).await;
+        let context = self.get_context(prompt).await?;
         let message_with_context =
             Message::User(format!("{prompt}\n\n<context>\n{context}\n</context>\n"));
         self
@@ -120,15 +145,15 @@ impl<M: CompletionModel> Client<M> {
             .await
     }
 
-    async fn get_context(&self, prompt: &str) -> String {
+    async fn get_context(&self, prompt: &str) -> Result<String, CompletionError> {
         let mut context = String::new();
         for embedder in self.embedders.iter() {
-            let query_results = embedder.query(prompt, DEFAULT_TOP_N).await.unwrap();
+            let query_results = embedder.query(prompt, DEFAULT_TOP_N).await?;
             for r in query_results {
                 context.push_str(&r.raw_data);
             }
         }
-        context
+        Ok(context)
     }
 }
 

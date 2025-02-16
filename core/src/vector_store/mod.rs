@@ -5,7 +5,7 @@ use super::embeddings::embedding::Embedding;
 pub mod in_memory_vec_store;
 pub use in_memory_vec_store::InMemoryVectorStore;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum VectorStoreError {
     Undefined,
     EmbeddingNotFound,

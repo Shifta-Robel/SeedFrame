@@ -1,4 +1,4 @@
-use crate::completion::{CompletionError, CompletionModel, Message, MessageHistory};
+use crate::completion::{CompletionError, CompletionModel, Message, MessageHistory, TokenUsage};
 use crate::embeddings::model::{EmbeddingModel, ModelError};
 use async_trait::async_trait;
 use reqwest::Client;
@@ -9,6 +9,7 @@ use serde_json::json;
 pub struct OpenAICompletionModel {
     api_key: String,
     api_url: String,
+    client: reqwest::Client,
     model: String,
 }
 
@@ -16,6 +17,7 @@ impl OpenAICompletionModel {
     pub fn new(api_key: String, api_url: String, model: String) -> Self {
         Self {
             api_key,
+            client: reqwest::Client::new(),
             api_url,
             model,
         }
@@ -49,9 +51,7 @@ impl CompletionModel for OpenAICompletionModel {
         history: &MessageHistory,
         temperature: f64,
         max_tokens: usize,
-    ) -> Result<Message, CompletionError> {
-        let client = Client::new();
-
+    ) -> Result<(Message, TokenUsage), CompletionError> {
         let mut messages = history.clone();
         messages.push(message);
         let messages: Vec<_> = messages
@@ -66,7 +66,7 @@ impl CompletionModel for OpenAICompletionModel {
             "max_tokens": max_tokens,
         });
 
-        let response = client
+        let response = self.client
             .post(&self.api_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
@@ -87,8 +87,15 @@ impl CompletionModel for OpenAICompletionModel {
                     "Invalid response body".to_string(),
                 ))?
                 .to_string();
+            let usage_response = &response_json["usage"];
+            let usage_parse_error = CompletionError::ParseError("Failed to parse usage data from response".to_string());
+            let token_usage =  TokenUsage {
+                prompt_tokens: Some(usage_response["prompt_tokens"].as_u64().ok_or(usage_parse_error.clone())?),
+                completion_tokens: Some(usage_response["completion_tokens"].as_u64().ok_or(usage_parse_error.clone())?),
+                total_tokens: Some(usage_response["total_tokens"].as_u64().ok_or(usage_parse_error)?),
+            };
 
-            Ok(Message::Assistant(response_message))
+            Ok((Message::Assistant(response_message), token_usage))
         } else {
             let error_message = response
                 .text()
@@ -171,6 +178,7 @@ mod tests {
 
     #[tokio::test]
     async fn simple_openai_completion_request() {
+        tracing_subscriber::fmt().init();
         let api_key = std::env::var("SEEDFRAME_TEST_OPENAI_KEY")
             .unwrap()
             .to_string();
@@ -196,7 +204,8 @@ For this test to be considered successful, reply with "okay" without the quotes,
 
         assert!(response.is_ok());
 
-        assert!(response.is_ok_and(|v| v == Message::Assistant("okay".to_string())));
+        assert!(response.clone().is_ok_and(|v| v.0 == Message::Assistant("okay".to_string())));
+        assert!(response.is_ok_and(|v| matches!(v.1, TokenUsage { prompt_tokens: Some(_), completion_tokens: Some(_), total_tokens: Some(_) })));
     }
 
     #[tokio::test]

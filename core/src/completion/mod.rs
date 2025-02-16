@@ -13,6 +13,14 @@ pub enum Message {
     Assistant(String),
 }
 
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct TokenUsage {
+    pub prompt_tokens: Option<u64>,
+    pub completion_tokens: Option<u64>,
+    pub total_tokens: Option<u64>,
+}
+
 pub(crate) type MessageHistory = Vec<Message>;
 
 #[derive(Debug, Clone)]
@@ -34,7 +42,7 @@ pub trait CompletionModel {
         history: &MessageHistory,
         temperature: f64,
         max_tokens: usize,
-    ) -> Result<Message, CompletionError>;
+    ) -> Result<(Message, TokenUsage), CompletionError>;
 }
 
 pub struct Client<M: CompletionModel> {
@@ -46,6 +54,7 @@ pub struct Client<M: CompletionModel> {
     max_tokens: usize,
 
     embedders: Vec<Embedder>,
+    token_usage: TokenUsage
 }
 
 impl<M: CompletionModel> Client<M> {
@@ -56,6 +65,7 @@ impl<M: CompletionModel> Client<M> {
             embedders,
             temperature,
             max_tokens,
+            token_usage: TokenUsage::default()
         }
     }
 
@@ -63,15 +73,20 @@ impl<M: CompletionModel> Client<M> {
     /// Prompt the LLM and get a response.
     /// The response will be stored in the client's history
     pub async fn prompt(&mut self, prompt: &str) -> Result<Message, CompletionError> {
-        let response = self
+        let (response, token_usage) = self
             .send_prompt(prompt, &self.history, self.temperature, self.max_tokens)
-            .await;
+            .await?;
 
-        if let Ok(ref response) = response {
-            self.history.push(response.clone());
-        }
+        self.history.push(response.clone());
+        self.update_token_usage(&token_usage);
 
-        response
+        Ok(response)
+    }
+
+    fn update_token_usage(&mut self, usage: &TokenUsage) {
+        self.token_usage.prompt_tokens = combine_options(self.token_usage.prompt_tokens, usage.prompt_tokens);
+        self.token_usage.completion_tokens = combine_options(self.token_usage.completion_tokens, usage.completion_tokens);
+        self.token_usage.total_tokens = combine_options(self.token_usage.total_tokens, usage.total_tokens);
     }
 
     /// Prompt the LLM with a custom history, and get a response.
@@ -81,13 +96,12 @@ impl<M: CompletionModel> Client<M> {
         prompt: &str,
         history: Option<MessageHistory>,
     ) -> Result<Message, CompletionError> {
-        self.send_prompt(
-            prompt,
-            &history.unwrap_or(self.history.clone()),
-            self.temperature,
-            self.max_tokens,
-        )
-        .await
+        let (response, token_usage) = self
+            .send_prompt( prompt, &history.unwrap_or(self.history.clone()), self.temperature, self.max_tokens).await?;
+
+        self.update_token_usage(&token_usage);
+
+        Ok(response)
     }
 
     async fn send_prompt(
@@ -96,16 +110,14 @@ impl<M: CompletionModel> Client<M> {
         history: &MessageHistory,
         temperature: f64,
         max_tokens: usize,
-    ) -> Result<Message, CompletionError> {
+    ) -> Result<(Message, TokenUsage), CompletionError> {
         let context = self.get_context(prompt).await;
         let message_with_context =
             Message::User(format!("{prompt}\n\n<context>\n{context}\n</context>\n"));
-        let response = self
+        self
             .completion_model
             .send(message_with_context, history, temperature, max_tokens)
-            .await;
-
-        response
+            .await
     }
 
     async fn get_context(&self, prompt: &str) -> String {
@@ -117,5 +129,12 @@ impl<M: CompletionModel> Client<M> {
             }
         }
         context
+    }
+}
+
+fn combine_options(a: Option<u64>, b: Option<u64>) -> Option<u64> {
+    match (a, b) {
+        (Some(a_val), Some(b_val)) => Some(a_val + b_val),
+        _ => None,
     }
 }

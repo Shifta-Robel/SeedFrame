@@ -3,11 +3,15 @@ use async_trait::async_trait;
 use super::embeddings::embedding::Embedding;
 
 pub mod in_memory_vec_store;
+pub mod pinecone;
+
 pub use in_memory_vec_store::InMemoryVectorStore;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum VectorStoreError {
-    Undefined,
+    Undefined(String),
+    FailedToCreateStore(String),
+    FailedUpsert(String),
     EmbeddingNotFound,
 }
 

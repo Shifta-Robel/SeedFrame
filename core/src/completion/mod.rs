@@ -77,6 +77,7 @@ impl<M: CompletionModel> Client<M> {
         }
     }
 
+    /// Clear conversation history while maintaining premble
     pub fn clear_history(&mut self) {
         self.history.retain(|m| matches!(m, Message::Preamble(_)));
     }

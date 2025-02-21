@@ -7,10 +7,11 @@ type DarlingError = darling::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct VectorStoreConfig {
-    /// just `InMemoryVectorStore` for now
     kind: String,
-    // #[darling(default)]
-    // url: Option<String>,
+    #[darling(default)]
+    host: Option<String>,
+    #[darling(default)]
+    namespace: Option<String>,
 }
 
 #[allow(unused)]
@@ -59,6 +60,7 @@ impl Display for VectorStoreMacroError {
 #[derive(Debug, Clone)]
 enum VectorStoreType {
     InMemoryVectorStore,
+    Pinecone,
 }
 
 impl Display for VectorStoreType {
@@ -68,6 +70,7 @@ impl Display for VectorStoreType {
             "{}",
             match self {
                 Self::InMemoryVectorStore => "InMemoryVectorStore",
+                Self::Pinecone => "PineconeClient",
             }
         )
     }
@@ -77,6 +80,7 @@ impl VectorStoreType {
     fn from_str(kind: &str) -> Result<Self, VectorStoreMacroError> {
         match kind {
             "InMemoryVectorStore" => Ok(Self::InMemoryVectorStore),
+            "pinecone" => Ok(Self::Pinecone),
             unknown => Err(VectorStoreMacroError::UnknownVectorStore(
                 unknown.to_string(),
             )),
@@ -84,21 +88,27 @@ impl VectorStoreType {
     }
 
     fn required_args(&self) -> &'static [&'static str] {
-        &[]
+        match self {
+            Self::InMemoryVectorStore => &[],
+            Self::Pinecone => &["host"],
+        }
     }
 
     fn supported_args(&self) -> &'static [&'static str] {
-        &[]
+        match self {
+            Self::InMemoryVectorStore => &[],
+            Self::Pinecone => &["host", "namespace"],
+        }
     }
 }
 
 fn validate_config(
-    _config: &VectorStoreConfig,
+    config: &VectorStoreConfig,
     vector_store_type: &VectorStoreType,
 ) -> Result<(), VectorStoreMacroError> {
     let required = vector_store_type.required_args();
     let supported = vector_store_type.supported_args();
-    let _check_arg = |name: &str, value: &Option<String>| {
+    let check_arg = |name: &str, value: &Option<String>| {
         if value.is_none() && required.contains(&name) {
             Err(VectorStoreMacroError::MissingArgument(
                 name.to_string(),
@@ -114,22 +124,36 @@ fn validate_config(
         }
     };
 
+    _ = check_arg("host", &config.host)?;
     Ok(())
 }
 
 fn generate_builder(
     vector_store_type: &VectorStoreType,
-    _config: &VectorStoreConfig,
+    config: &VectorStoreConfig,
     vis: &syn::Visibility,
 ) -> proc_macro2::TokenStream {
     match vector_store_type {
         VectorStoreType::InMemoryVectorStore => {
             quote! {
-                #vis fn build() -> Self {
-                    use seedframe::vector_store::in_memory_vec_store::InMemoryVectorStore;
-                    Self {
+                #vis async fn build() -> Result<Self, seedframe::vector_store::VectorStoreError> {
+                    Ok(Self {
                         inner: (InMemoryVectorStore::new())
-                    }
+                    })
+                }
+            }
+        },
+        VectorStoreType::Pinecone => {
+            let host: &str = dbg!(config.host.as_ref().unwrap());
+            let _namespace = dbg!(config.namespace.clone());
+            quote! {
+                #vis async fn build() -> Result<Self, seedframe::vector_store::VectorStoreError> {
+                    Ok(Self {
+                        inner: PineconeClient::new(
+                                   PineconeConfig::new(
+                                       &std::env::var("SEEDFRAME_PINECONE_API_KEY").unwrap().to_string(),
+                                       #host, None)).await?,
+                    })
                 }
             }
         }

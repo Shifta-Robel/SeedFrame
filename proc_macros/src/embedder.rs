@@ -134,7 +134,7 @@ fn generate_builder(
     vis: &syn::Visibility,
 ) -> proc_macro2::TokenStream {
     let vector_store_instanciated = quote! {
-        ::std::sync::Arc::new(::tokio::sync::Mutex::new(::std::boxed::Box::new(#vector_store_type::build().inner)))
+        ::std::sync::Arc::new(::tokio::sync::Mutex::new(::std::boxed::Box::new(#vector_store_type::build().await.unwrap().inner)))
     };
     let mut loader_instances = quote! {
     };

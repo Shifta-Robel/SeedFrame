@@ -10,21 +10,31 @@ use super::{VectorStore, VectorStoreError};
 const RETRIES: u8 = 3;
 
 #[derive(Debug)]
-pub struct PineConeConfig {
+pub struct PineconeConfig {
     api_key: String,
     host: String,
     namespace: Option<String>
 }
 
+impl PineconeConfig {
+    pub fn new(api_key: &str, host: &str, namespace: Option<String>) -> Self {
+        Self {
+            api_key: api_key.to_string(),
+            host: host.to_string(),
+            namespace
+        }
+    }
+}
+
 #[derive(Debug)]
-pub struct PineConeClient{
+pub struct PineconeClient{
     client: Client,
-    config: PineConeConfig,
+    config: PineconeConfig,
     base_url: Url,
 }
 
-impl PineConeClient {
-    pub async fn new(config: PineConeConfig) -> Result<Self, VectorStoreError> {
+impl PineconeClient {
+    pub async fn new(config: PineconeConfig) -> Result<Self, VectorStoreError> {
         let client = Client::new();
         let base_url = Url::parse(&format!("https://{}",config.host)).map_err(|e| VectorStoreError::FailedToCreateStore(e.to_string()))?;
         let mut attempts = 0u8;
@@ -56,7 +66,7 @@ impl PineConeClient {
 }
 
 #[async_trait]
-impl VectorStore for PineConeClient {
+impl VectorStore for PineconeClient {
     async fn get_by_id(&self, id: String) -> Result<Embedding, VectorStoreError>{
         use VectorStoreError::Undefined;
         let mut url = self.base_url.join("vectors/fetch").unwrap();

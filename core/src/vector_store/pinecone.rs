@@ -1,229 +1,157 @@
 use async_trait::async_trait;
-use reqwest::{Client, Url, StatusCode};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
+use pinecone_sdk::{
+    models::{Kind, Metadata, Namespace, QueryResponse, Value, Vector},
+    pinecone::{data::Index, PineconeClientConfig},
+};
 use std::collections::{BTreeMap, HashMap};
 
-use crate::embeddings::embedding::Embedding;
 use super::{VectorStore, VectorStoreError};
+use crate::embeddings::embedding::Embedding;
+use tokio::sync::Mutex;
 
-const RETRIES: u8 = 3;
-
-#[derive(Debug)]
-pub struct PineConeConfig {
-    api_key: String,
-    host: String,
-    namespace: Option<String>
+struct PineconeVectorStore {
+    index: Mutex<Index>,
+    namespace: Namespace,
 }
 
-#[derive(Debug)]
-pub struct PineConeClient{
-    client: Client,
-    config: PineConeConfig,
-    base_url: Url,
-}
+const PINECONE_API_VERSION: &str = "2025-01";
 
-impl PineConeClient {
-    pub async fn new(config: PineConeConfig) -> Result<Self, VectorStoreError> {
-        let client = Client::new();
-        let base_url = Url::parse(&format!("https://{}",config.host)).map_err(|e| VectorStoreError::FailedToCreateStore(e.to_string()))?;
-        let mut attempts = 0u8;
-        loop {
-            let response = client
-                .get(base_url.join("describe_index_stats").unwrap())
-                .header("Api-Key", &config.api_key)
-                .send()
-                .await
-                .map_err(|e| { VectorStoreError::Undefined(e.to_string()) })?;
-
-            if response.status().is_success() {break} else{
-                attempts += 1;
-                if attempts >= RETRIES {
-                    Err(VectorStoreError::FailedToCreateStore(
-                        format!("Failed to fetch index: {:?}", response.error_for_status().unwrap_err()),
-                    ))?;
-                }
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            }
-        }
-
-        Ok(Self {
-            client,
-            config,
-            base_url,
-        })
+impl PineconeVectorStore {
+    pub async fn new(
+        api_key_var: Option<String>,
+        index_host: String,
+        source_tag: Option<String>,
+        namespace: Option<String>,
+    ) -> Result<Self, VectorStoreError> {
+        let mut api_key = None;
+        if let Some(var_name) = api_key_var {
+            api_key = std::env::var(var_name).ok()
+        };
+        let config = PineconeClientConfig {
+            api_key,
+            control_plane_host: None,
+            additional_headers: Some(HashMap::from([(
+                "X-Pinecone-API-Version".to_string(),
+                PINECONE_API_VERSION.to_string(),
+            )])),
+            source_tag,
+        };
+        let client = config.client().expect("Failed to create pinecone instance");
+        let index = Mutex::new(client.index(&index_host).await?);
+        let name = if let Some(n) = namespace {
+            n
+        } else {
+            String::new()
+        };
+        let namespace = Namespace { name };
+        Ok(Self { index, namespace })
     }
 }
 
 #[async_trait]
-impl VectorStore for PineConeClient {
-    async fn get_by_id(&self, id: String) -> Result<Embedding, VectorStoreError>{
-        use VectorStoreError::Undefined;
-        let mut url = self.base_url.join("vectors/fetch").unwrap();
-        if let Some(namespace) = &self.config.namespace {
-            url.set_query(Some(&format!("namespace={namespace}")))
-        };
-
-        let response = self.client
-            .get(url.clone())
-            .header("Api-Key", &self.config.api_key)
-            .query(&[("ids", &id)])
-            .send()
-            .await
-            .map_err(|e| Undefined(e.to_string()))?;
-
-        match response.status() {
-            StatusCode::OK => {
-                let res: PineconeFetchResponse = response.json().await.map_err(|e| Undefined(e.to_string()))?;
-                res.vectors
-                    .into_iter()
-                    .next()
-                    .and_then(|(_, v)| v.try_into().ok())
-                    .ok_or(VectorStoreError::EmbeddingNotFound)
-            }
-            StatusCode::NOT_FOUND => Err(VectorStoreError::EmbeddingNotFound),
-            _ => Err(Undefined(response.error_for_status().unwrap_err().to_string())),
-        }
+impl VectorStore for PineconeVectorStore {
+    async fn get_by_id(&self, id: String) -> Result<Embedding, VectorStoreError> {
+        let mut index_guard = self.index.lock().await;
+        let resp = index_guard
+            .query_by_id(&id, 1, &self.namespace, None, Some(true), Some(true))
+            .await?;
+        Ok(Embeddings::try_from(resp)?
+            .0
+            .first()
+            .ok_or(VectorStoreError::EmbeddingNotFound)?
+            .clone())
     }
-
-    async fn store(&self, embedding: Embedding) -> Result<(), VectorStoreError>{
+    async fn store(&self, embedding: Embedding) -> Result<(), VectorStoreError> {
+        let mut index_guard = self.index.lock().await;
         if embedding.raw_data.is_empty() {
-            let url = self.base_url.join("vectors/delete").unwrap();
-            let response = self.client
-                .post(url)
-                .header("Api-Key", &self.config.api_key)
-                .json(&json!({ "ids": [embedding.id] }))
-                .send()
-                .await
-                .map_err(|e| VectorStoreError::Undefined(e.to_string()))?;
-
-            match response.status() {
-                StatusCode::OK => Ok(()),
-                StatusCode::NOT_FOUND => Err(VectorStoreError::EmbeddingNotFound),
-                _ => Err(VectorStoreError::FailedUpsert(response.error_for_status().unwrap_err().to_string())),
-            }?;
-            Ok(())
+            _ = index_guard
+                .delete_by_id(&[&embedding.id], &self.namespace)
+                .await?;
         } else {
-            let url = self.base_url.join("vectors/upsert").unwrap();
-            let vector: Vec<PineconeRecord> = vec![embedding.try_into()?];
-            
-            let response = self.client
-                .post(url)
-                .header("Api-Key", &self.config.api_key)
-                .json(&json!({ "vectors": vector }))
-                .send()
-                .await
-                .map_err(|e| VectorStoreError::Undefined(e.to_string()))?;
-
-            if response.status().is_success() {
-                Ok(())
-            } else {
-                Err(VectorStoreError::FailedUpsert(response.error_for_status().unwrap_err().to_string()))
-            }
+            _ = index_guard
+                .upsert(&[embedding.into()], &self.namespace)
+                .await?;
         }
+        Ok(())
     }
-
-    async fn top_n(&self, query: &[f64], n: usize) -> Result<Vec<Embedding>, VectorStoreError>{
-        let url = self.base_url.join("query").unwrap();
-        let response = self.client
-            .post(url)
-            .header("Api-Key", &self.config.api_key)
-            .json(&json!({
-                "vector": query,
-                "topK": n,
-                "includeValues": true,
-                "includeMetadata": true
-            }))
-            .send()
-            .await
-            .map_err(|e| VectorStoreError::Undefined(e.to_string()))?;
-
-        if !response.status().is_success() {
-            return Err(VectorStoreError::Undefined(response.error_for_status().unwrap_err().to_string()));
-        }
-
-        let res: PineconeQueryResponse = response.json().await.map_err(|e| VectorStoreError::Undefined(e.to_string()))?;
-        res.matches
-            .into_iter()
-            .map(|m| m.try_into())
-            .collect()
+    async fn top_n(&self, query: &[f64], n: usize) -> Result<Vec<Embedding>, VectorStoreError> {
+        let mut index_guard = self.index.lock().await;
+        let resp = index_guard
+            .query_by_value(
+                query.iter().map(|&v| v as f32).collect::<Vec<f32>>(),
+                None, n as u32, &self.namespace, None, Some(true), Some(true))
+            .await?;
+        Ok(Embeddings::try_from(resp)?.0)
     }
 }
 
-// Pinecone API data structures
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct PineconeRecord {
-    id: String,
-    values: Vec<f64>,
-    metadata: BTreeMap<String, serde_json::Value>,
+fn value_from_str(value: String) -> Value {
+    let kind = Some(Kind::StringValue(value));
+    Value { kind }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct PineconeVector {
-    vectors: Vec<PineconeRecord>
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct PineconeMetadata {
-    meta: BTreeMap<String, serde_json::Value>,
-    #[serde(skip)]
-    raw_data: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct PineconeFetchResponse {
-    vectors: HashMap<String, PineconeRecord>
-}
-
-#[derive(Debug, Deserialize)]
-struct PineconeQueryResponse {
-    matches: Vec<PineconeMatch>,
-}
-
-#[derive(Debug, Deserialize)]
-struct PineconeMatch {
-    id: String,
-    values: Vec<f64>,
-    metadata: PineconeMetadata,
-    // score: f64,
-}
-
-impl TryFrom<Embedding> for PineconeRecord {
-    type Error = VectorStoreError;
-
-    fn try_from(embedding: Embedding) -> Result<Self, Self::Error> {
-        let mut metadata =  BTreeMap::new();
-        metadata.insert("text".to_string(), serde_json::Value::from(embedding.raw_data.clone()));
-        Ok(Self {
-            id: embedding.id,
-            values: embedding.embedded_data,
+impl From<Embedding> for Vector {
+    fn from(value: Embedding) -> Self {
+        let id = value.id;
+        let values = value.embedded_data.iter().map(|&v| v as f32).collect();
+        let mut fields = BTreeMap::new();
+        fields
+            .insert("text".to_string(), value_from_str(value.raw_data))
+            .unwrap();
+        let metadata = Some(Metadata { fields });
+        Vector {
+            id,
+            values,
+            sparse_values: None,
             metadata,
-        })
+        }
+    }
+}
+struct Embeddings(Vec<Embedding>);
+
+impl TryFrom<QueryResponse> for Embeddings {
+    type Error = VectorStoreError;
+    fn try_from(value: QueryResponse) -> Result<Self, Self::Error> {
+        let mut embeddings: Vec<Embedding> = vec![];
+        for m in value.matches {
+            let mut raw_data = String::new();
+            let metadata = m.metadata.ok_or(VectorStoreError::Undefined(
+                "Query response without raw data".to_string(),
+            ))?;
+            metadata
+                .fields
+                .iter()
+                .for_each(|(k, v)| raw_data.push_str(&format!("\"{k}\":\"{v:?}\"")));
+            let embedded_data = m.values.iter().map(|&v| v as f64).collect();
+            embeddings.push(Embedding {
+                id: m.id,
+                embedded_data,
+                raw_data,
+            });
+        }
+        Ok(Embeddings(embeddings))
     }
 }
 
-impl TryFrom<PineconeRecord> for Embedding {
-    type Error = VectorStoreError;
+#[cfg(test)]
+mod tests{
+    use super::*;
 
-    fn try_from(record: PineconeRecord) -> Result<Self, Self::Error> {
-        let mut raw_data = String::new();
-        record.metadata.iter().for_each(|(k, v)| raw_data.push_str(&format!("\"{k}\":\"{v}\"")));
-        Ok(Self {
-            id: record.id,
-            embedded_data: record.values,
-            raw_data,
-        })
+    #[tokio::test]
+    async fn test_new_pinecone_vec_store() {
+        let host = std::env::var("PINECONE_IDX_HOST").unwrap();
+        let pcvs = PineconeVectorStore::new(None, host, None, None).await;
+        assert!(pcvs.is_ok());
+        let resp = pcvs.unwrap().index.lock().await.describe_index_stats(None).await;
+        assert!(resp.is_ok());
     }
-}
 
-impl TryFrom<PineconeMatch> for Embedding {
-    type Error = VectorStoreError;
-
-    fn try_from(pc_match: PineconeMatch) -> Result<Self, Self::Error> {
-        Ok(Self {
-            id: pc_match.id,
-            embedded_data: pc_match.values,
-            raw_data: pc_match.metadata.raw_data,
-        })
+    #[tokio::test]
+    async fn test_pinecone_get_by_id() {
+        let host = std::env::var("PINECONE_IDX_HOST").unwrap();
+        let pcvs = PineconeVectorStore::new(None, host, None, None).await;
+        assert!(pcvs.is_ok());
+        let resp = pcvs.unwrap().get_by_id("1".to_string()).await;
+        assert!(resp.is_ok());
     }
 }

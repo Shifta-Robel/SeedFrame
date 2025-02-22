@@ -152,7 +152,7 @@ fn generate_builder(
         },
         VectorStoreType::Pinecone => {
             use syn::Expr;
-            let host: &str = dbg!(config.host.as_ref().unwrap());
+            let host: &str = config.host.as_ref().unwrap();
             let env: Option<String> = config.env_var.clone();
             let source_tag: Option<String> = config.source_tag.clone();
             let namespace: Option<String> = config.namespace.clone();

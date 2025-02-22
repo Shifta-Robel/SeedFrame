@@ -12,6 +12,10 @@ struct VectorStoreConfig {
     host: Option<String>,
     #[darling(default)]
     namespace: Option<String>,
+    #[darling(default)]
+    env_var: Option<String>,
+    #[darling(default)]
+    source_tag: Option<String>
 }
 
 #[allow(unused)]
@@ -70,7 +74,7 @@ impl Display for VectorStoreType {
             "{}",
             match self {
                 Self::InMemoryVectorStore => "InMemoryVectorStore",
-                Self::Pinecone => "PineconeClient",
+                Self::Pinecone => "PineconeVectorStore",
             }
         )
     }
@@ -97,7 +101,7 @@ impl VectorStoreType {
     fn supported_args(&self) -> &'static [&'static str] {
         match self {
             Self::InMemoryVectorStore => &[],
-            Self::Pinecone => &["host", "namespace"],
+            Self::Pinecone => &["host", "namespace", "env_var", "source_tag"],
         }
     }
 }
@@ -125,6 +129,9 @@ fn validate_config(
     };
 
     _ = check_arg("host", &config.host)?;
+    _ = check_arg("namespace", &config.namespace)?;
+    _ = check_arg("env_var", &config.env_var)?;
+    _ = check_arg("source_tag", &config.source_tag)?;
     Ok(())
 }
 
@@ -144,20 +151,30 @@ fn generate_builder(
             }
         },
         VectorStoreType::Pinecone => {
+            use syn::Expr;
             let host: &str = dbg!(config.host.as_ref().unwrap());
-            let _namespace = dbg!(config.namespace.clone());
+            let env: Option<String> = config.env_var.clone();
+            let source_tag: Option<String> = config.source_tag.clone();
+            let namespace: Option<String> = config.namespace.clone();
+            //
+            let host_expr = syn::parse_str::<Expr>(&format!("\"{host}\".to_string()")).unwrap();
+            let env_expr = option_expr(env);
+            let source_tag_expr = option_expr(source_tag);
+            let namespace_expr = option_expr(namespace);
             quote! {
                 #vis async fn build() -> Result<Self, seedframe::vector_store::VectorStoreError> {
                     Ok(Self {
-                        inner: PineconeClient::new(
-                                   PineconeConfig::new(
-                                       &std::env::var("SEEDFRAME_PINECONE_API_KEY").unwrap().to_string(),
-                                       #host, None)).await?,
+                        inner: PineconeVectorStore::new(#env_expr, #host_expr, #source_tag_expr, #namespace_expr).await?,
                     })
                 }
             }
         }
     }
+}
+
+fn option_expr(opt: Option<String>) -> syn::Expr {
+    let expr = if let Some(v) = opt { &format!("Some(\"{}\".to_string())", v) }else { "None" };
+    syn::parse_str(expr).unwrap()
 }
 
 pub(crate) fn vector_store_impl(

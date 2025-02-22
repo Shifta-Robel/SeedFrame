@@ -9,7 +9,7 @@ use super::{VectorStore, VectorStoreError};
 use crate::embeddings::embedding::Embedding;
 use tokio::sync::Mutex;
 
-struct PineconeVectorStore {
+pub struct PineconeVectorStore {
     index: Mutex<Index>,
     namespace: Namespace,
 }

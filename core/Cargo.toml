@@ -16,7 +16,11 @@ walkdir = "2.5.0"
 seedframe_macros =  { path = "../proc_macros"}
 notify = "8.0.0"
 tracing = "0.1.41"
+pinecone-sdk = {version ="0.1.2", optional = true}
 
 [dev-dependencies]
 tempfile = "3.16.0"
 tracing-subscriber = "0.3.19"
+
+[features]
+pinecone = ["pinecone-sdk"]

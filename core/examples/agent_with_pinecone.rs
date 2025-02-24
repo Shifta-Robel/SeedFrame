@@ -11,9 +11,8 @@ pub struct MyLoader;
 
 #[vector_store(
     kind = "pinecone",
-    host = "https://smth.pinecone.io",
-    namespace = "ns",
-    env_var = "PINECONE_KEY",
+    host = "https://test-sf-smth.pinecone.io",
+    env_var = "PINECONE_API_KEY",
     source_tag = "seedframe"
 )]
 pub struct MyVectorStore;
@@ -35,11 +34,10 @@ struct MyClient {
 #[tokio::main]
 async fn main() {
     let mut c = MyClient::build(
-        "You are a test llm. you will reply to the user with their own prompt".to_string(),
+        "Respond with the definition and language of origin for the word the user prompts you with, you'll be given a context to use for the words, if you cant get the meaning for the word from the context reply with a \"I dont know\"".to_string(),
     )
     .await;
-
-    let resp = c.prompt("Hey there").await.unwrap();
-
-    dbg!(resp);
+    // delay for the vector store to finish upserting the loaded resource before the first prompt
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    _ = dbg!(c.prompt("What's a mikmak").await.unwrap());
 }

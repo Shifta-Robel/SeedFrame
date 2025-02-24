@@ -95,9 +95,7 @@ impl From<Embedding> for Vector {
         let id = value.id;
         let values = value.embedded_data.iter().map(|&v| v as f32).collect();
         let mut fields = BTreeMap::new();
-        fields
-            .insert("text".to_string(), value_from_str(value.raw_data))
-            .unwrap();
+        fields.insert("text".to_string(), value_from_str(value.raw_data));
         let metadata = Some(Metadata { fields });
         Vector {
             id,

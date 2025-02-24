@@ -37,7 +37,7 @@ impl Display for ClientMacroError {
             Self::UnknownCompletionModel(l) => {
                 write!(
                     f,
-                    "Unknown embedding model kind: '{l}'. valid options are OpenAIEmbeddingModel"
+                    "Unknown embedding model kind: '{l}'. valid options are OpenAIEmbeddingModel, DeepseekEmbeddingModel"
                 )
             }
             Self::UnsupportedArgument(arg, client) => {
@@ -60,6 +60,7 @@ impl Display for ClientMacroError {
 #[derive(Debug, Clone)]
 enum BuiltInProviderType {
     OpenAICompletionModel,
+    DeepseekCompletionModel,
 }
 
 impl Display for BuiltInProviderType {
@@ -68,7 +69,8 @@ impl Display for BuiltInProviderType {
             f,
             "{}",
             match self {
-                Self::OpenAICompletionModel => "seedframe::providers::openai::OpenAICompletionModel",
+                Self::OpenAICompletionModel => "seedframe::providers::completions::openai::OpenAICompletionModel",
+                Self::DeepseekCompletionModel => "seedframe::providers::completions::deepseek::DeepseekCompletionModel",
             }
         )
     }
@@ -78,6 +80,7 @@ impl BuiltInProviderType {
     fn from_str(kind: &str) -> Result<Self, ClientMacroError> {
         match kind {
             "OpenAICompletionModel" => Ok(Self::OpenAICompletionModel),
+            "DeepseekCompletionModel" => Ok(Self::DeepseekCompletionModel),
             unknown => Err(ClientMacroError::UnknownCompletionModel(
                 unknown.to_string(),
             )),
@@ -87,12 +90,14 @@ impl BuiltInProviderType {
     fn required_args(&self) -> &'static [&'static str] {
         match self {
             Self::OpenAICompletionModel => &["model"],
+            Self::DeepseekCompletionModel => &["model"],
         }
     }
 
     fn supported_args(&self) -> &'static [&'static str] {
         match self {
             Self::OpenAICompletionModel => &["model"],
+            Self::DeepseekCompletionModel => &["model"],
         }
     }
 }
@@ -137,19 +142,37 @@ fn generate_builder(
         BuiltInProviderType::OpenAICompletionModel => {
             let model = config.model.as_ref().unwrap().to_string();
             let completion_model_init = quote! {
-                ::seedframe::providers::openai::OpenAICompletionModel::new(std::env::var("SEEDFRAME_OPENAI_API_KEY").unwrap().to_string(), "https://api.openai.com/v1/chat/completions".to_string(), #model.to_string())
+                ::seedframe::providers::completions::openai::OpenAICompletionModel::new(std::env::var("SEEDFRAME_OPENAI_API_KEY").unwrap().to_string(), "https://api.openai.com/v1/chat/completions".to_string(), #model.to_string())
             };
             quote! {
-                #vis async fn build(preamble: String) -> seedframe::completion::Client<::seedframe::providers::openai::OpenAICompletionModel> {
+                #vis async fn build(preamble: String) -> seedframe::completion::Client<::seedframe::providers::completions::openai::OpenAICompletionModel> {
                     seedframe::completion::Client::new(
                         #completion_model_init,
                         preamble,
-                        0.5,
+                        1.0,
                         2400,
                         vec![#embedder_instances],
                     )
                 }
             }
+        },
+        BuiltInProviderType::DeepseekCompletionModel => {
+            let model = config.model.as_ref().unwrap().to_string();
+            let completion_model_init = quote! {
+                ::seedframe::providers::completions::deepseek::DeepseekCompletionModel::new(std::env::var("SEEDFRAME_DEEPSEEK_API_KEY").unwrap().to_string(), "https://api.deepseek.com/chat/completions".to_string(), #model.to_string())
+            };
+            quote! {
+                #vis async fn build(preamble: String) -> seedframe::completions::Client<::seedframe::providers::completions::deepseek::DeepseekCompletionModel> {
+                    seedframe::completion::Client::new(
+                        #completion_model_init,
+                        preamble,
+                        1.0,
+                        2400,
+                        vec![#embedder_instances],
+                    )
+                }
+            }
+
         }
     }
 }

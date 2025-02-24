@@ -8,7 +8,7 @@ type DarlingError = darling::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct EmbedderConfig {
-    kind: String,
+    provider: String,
     #[darling(default)]
     model: Option<String>,
 }
@@ -39,7 +39,7 @@ impl Display for EmbedderMacroError {
             Self::UnknownEmbedderModel(l) => {
                 write!(
                     f,
-                    "Unknown embedding model kind: '{l}'. valid options are OpenAIEmbeddingModel"
+                    "Unknown embedding model provider: '{l}'. valid options are openai,"
                 )
             }
             Self::UnsupportedArgument(arg, embedder) => {
@@ -80,9 +80,9 @@ impl Display for BuiltInEmbedderType {
 }
 
 impl BuiltInEmbedderType {
-    fn from_str(kind: &str) -> Result<Self, EmbedderMacroError> {
-        match kind {
-            "OpenAIEmbeddingModel" => Ok(Self::OpenAIEmbeddingModel),
+    fn from_str(provider: &str) -> Result<Self, EmbedderMacroError> {
+        match provider {
+            "openai" => Ok(Self::OpenAIEmbeddingModel),
             unknown => Err(EmbedderMacroError::UnknownEmbedderModel(
                 unknown.to_string(),
             )),
@@ -243,7 +243,7 @@ pub(crate) fn embedder_impl(
         loaders
     };
 
-    let embedder_type = BuiltInEmbedderType::from_str(&config.kind)?;
+    let embedder_type = BuiltInEmbedderType::from_str(&config.provider)?;
     validate_config(&config, &embedder_type)?;
 
     let (struct_ident, struct_vis) = (&input.ident, &input.vis);

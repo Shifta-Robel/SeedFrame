@@ -4,14 +4,14 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
 
-pub struct DeepseekCompletionModel {
+pub struct XaiCompletionModel {
     api_key: String,
     api_url: String,
     client: reqwest::Client,
     model: String,
 }
 
-impl DeepseekCompletionModel {
+impl XaiCompletionModel {
     pub fn new(api_key: String, api_url: String, model: String) -> Self {
         Self {
             api_key,
@@ -25,24 +25,24 @@ impl DeepseekCompletionModel {
 #[derive(Serialize, Deserialize, Eq, PartialEq)]
 #[serde(tag = "role", content = "content")]
 #[allow(non_camel_case_types)]
-pub enum DeepseekMessage {
+pub enum XaiMessage {
     system(String),
     user(String),
     assistant(String),
 }
 
-impl From<Message> for DeepseekMessage {
-    fn from(value: Message) -> DeepseekMessage {
+impl From<Message> for XaiMessage {
+    fn from(value: Message) -> XaiMessage {
         match value {
-            Message::Preamble(s) => DeepseekMessage::system(s),
-            Message::User(s) => DeepseekMessage::user(s),
-            Message::Assistant(s) => DeepseekMessage::assistant(s),
+            Message::Preamble(s) => XaiMessage::system(s),
+            Message::User(s) => XaiMessage::user(s),
+            Message::Assistant(s) => XaiMessage::assistant(s),
         }
     }
 }
 
 #[async_trait]
-impl CompletionModel for DeepseekCompletionModel {
+impl CompletionModel for XaiCompletionModel {
     async fn send(
         &self,
         message: Message,
@@ -54,7 +54,7 @@ impl CompletionModel for DeepseekCompletionModel {
         messages.push(message);
         let messages: Vec<_> = messages
             .into_iter()
-            .map(Into::<DeepseekMessage>::into)
+            .map(Into::<XaiMessage>::into)
             .collect();
 
         let request_body = json!({
@@ -110,17 +110,17 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn simple_deepseek_completion_request() {
+    async fn simple_xai_completion_request() {
         tracing_subscriber::fmt().init();
-        let api_key = std::env::var("SEEDFRAME_TEST_DEEPSEEK_KEY")
+        let api_key = std::env::var("SEEDFRAME_TEST_XAI_KEY")
             .unwrap()
             .to_string();
-        let api_url = "https://api.deepseek.com/chat/completions".to_string();
-        let model = "deepseek".to_string();
+        let api_url = "https://api.x.ai/v1/chat/completions".to_string();
+        let model = "grok-2-latest".to_string();
 
-        let deepseek_completion_model = DeepseekCompletionModel::new(api_key, api_url, model);
+        let xai_completion_model = XaiCompletionModel::new(api_key, api_url, model);
 
-        let response = deepseek_completion_model
+        let response = xai_completion_model
             .send(
                 Message::User(
                     r#"

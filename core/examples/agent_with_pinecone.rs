@@ -11,7 +11,7 @@ pub struct MyLoader;
 )]
 pub struct MyVectorStore;
 
-#[embedder(kind = "OpenAIEmbeddingModel", model = "text-embedding-3-small")]
+#[embedder(provider = "openai", model = "text-embedding-3-small")]
 struct MyEmbedder {
     #[vector_store]
     my_vector_store: MyVectorStore,
@@ -19,7 +19,7 @@ struct MyEmbedder {
     my_loader: MyLoader,
 }
 
-#[client(kind = "OpenAICompletionModel", model = "gpt-4o-mini")]
+#[client(provider = "openai", model = "gpt-4o-mini")]
 struct MyClient {
     #[embedder]
     my_embedder: MyEmbedder,

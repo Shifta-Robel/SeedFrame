@@ -7,7 +7,7 @@ type DarlingError = darling::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct ClientConfig {
-    kind: String,
+    provider: String,
     #[darling(default)]
     model: Option<String>,
 }
@@ -37,7 +37,7 @@ impl Display for ClientMacroError {
             Self::UnknownCompletionModel(l) => {
                 write!(
                     f,
-                    "Unknown embedding model kind: '{l}'. valid options are OpenAIEmbeddingModel, DeepseekEmbeddingModel"
+                    "Unknown completion model provider: '{l}'. valid options are openai, deepseek, xai"
                 )
             }
             Self::UnsupportedArgument(arg, client) => {
@@ -61,6 +61,7 @@ impl Display for ClientMacroError {
 enum BuiltInProviderType {
     OpenAICompletionModel,
     DeepseekCompletionModel,
+    XaiCompletionModel,
 }
 
 impl Display for BuiltInProviderType {
@@ -71,16 +72,18 @@ impl Display for BuiltInProviderType {
             match self {
                 Self::OpenAICompletionModel => "seedframe::providers::completions::openai::OpenAICompletionModel",
                 Self::DeepseekCompletionModel => "seedframe::providers::completions::deepseek::DeepseekCompletionModel",
+                Self::XaiCompletionModel => "seedframe::providers::completions::xai::XaiCompletionModel",
             }
         )
     }
 }
 
 impl BuiltInProviderType {
-    fn from_str(kind: &str) -> Result<Self, ClientMacroError> {
-        match kind {
-            "OpenAICompletionModel" => Ok(Self::OpenAICompletionModel),
-            "DeepseekCompletionModel" => Ok(Self::DeepseekCompletionModel),
+    fn from_str(provider: &str) -> Result<Self, ClientMacroError> {
+        match provider {
+            "openai" => Ok(Self::OpenAICompletionModel),
+            "deepseek" => Ok(Self::DeepseekCompletionModel),
+            "xai" => Ok(Self::XaiCompletionModel),
             unknown => Err(ClientMacroError::UnknownCompletionModel(
                 unknown.to_string(),
             )),
@@ -91,6 +94,7 @@ impl BuiltInProviderType {
         match self {
             Self::OpenAICompletionModel => &["model"],
             Self::DeepseekCompletionModel => &["model"],
+            Self::XaiCompletionModel => &["model"],
         }
     }
 
@@ -98,6 +102,7 @@ impl BuiltInProviderType {
         match self {
             Self::OpenAICompletionModel => &["model"],
             Self::DeepseekCompletionModel => &["model"],
+            Self::XaiCompletionModel => &["model"],
         }
     }
 }
@@ -173,6 +178,24 @@ fn generate_builder(
                 }
             }
 
+        },
+        BuiltInProviderType::XaiCompletionModel=> {
+            let model = config.model.as_ref().unwrap().to_string();
+            let completion_model_init = quote! {
+                ::seedframe::providers::completions::xai::XaiCompletionModel::new(std::env::var("SEEDFRAME_XAI_API_KEY").unwrap().to_string(), "https://api.x.ai/v1/chat/completions".to_string(), #model.to_string())
+            };
+            quote! {
+                #vis async fn build(preamble: String) -> seedframe::completions::Client<::seedframe::providers::completions::xai::XaiCompletionModel> {
+                    seedframe::completion::Client::new(
+                        #completion_model_init,
+                        preamble,
+                        1.0,
+                        2400,
+                        vec![#embedder_instances],
+                    )
+                }
+            }
+
         }
     }
 }
@@ -225,7 +248,7 @@ pub(crate) fn client_impl(
         embedders
     };
 
-    let provider_type = BuiltInProviderType::from_str(&config.kind)?;
+    let provider_type = BuiltInProviderType::from_str(&config.provider)?;
     validate_config(&config, &provider_type)?;
 
     let (struct_ident, struct_vis) = (&input.ident, &input.vis);

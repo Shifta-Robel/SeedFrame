@@ -73,8 +73,8 @@ impl Display for VectorStoreType {
             f,
             "{}",
             match self {
-                Self::InMemoryVectorStore => "InMemoryVectorStore",
-                Self::Pinecone => "PineconeVectorStore",
+                Self::InMemoryVectorStore => "seedframe::vector_store::in_memory_vec_store::InMemoryVectorStore",
+                Self::Pinecone => "seedframe::vector_store::pinecone::PineconeVectorStore",
             }
         )
     }
@@ -145,19 +145,18 @@ fn generate_builder(
             quote! {
                 #vis async fn build() -> Result<Self, seedframe::vector_store::VectorStoreError> {
                     Ok(Self {
-                        inner: (InMemoryVectorStore::new())
+                        inner: (seedframe::vector_store::in_memory_vec_store::InMemoryVectorStore::new())
                     })
                 }
             }
         },
         VectorStoreType::Pinecone => {
-            use syn::Expr;
             let host: &str = config.host.as_ref().unwrap();
             let env: Option<String> = config.env_var.clone();
             let source_tag: Option<String> = config.source_tag.clone();
             let namespace: Option<String> = config.namespace.clone();
             //
-            let host_expr = syn::parse_str::<Expr>(&format!("\"{host}\".to_string()")).unwrap();
+            let host_expr = syn::parse_str::<syn::Expr>(&format!("\"{host}\".to_string()")).unwrap();
             let env_expr = option_expr(env);
             let source_tag_expr = option_expr(source_tag);
             let namespace_expr = option_expr(namespace);

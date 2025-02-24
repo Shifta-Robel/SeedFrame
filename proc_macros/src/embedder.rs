@@ -159,7 +159,7 @@ fn generate_builder(
             quote! {
                 #vis async fn build() -> Self {
                     Self { inner:
-                        Embedder::init(
+                        seedframe::embeddings::Embedder::init(
                             vec![#loader_instances],
                             #vector_store_instanciated,
                             #embedding_model_init,
@@ -257,7 +257,7 @@ pub(crate) fn embedder_impl(
 
     Ok(quote! {
         #struct_vis struct #struct_ident{
-            inner: Embedder,
+            inner: seedframe::embeddings::Embedder,
         }
 
         impl #struct_ident {

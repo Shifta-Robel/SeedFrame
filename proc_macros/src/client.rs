@@ -68,7 +68,7 @@ impl Display for BuiltInProviderType {
             f,
             "{}",
             match self {
-                Self::OpenAICompletionModel => "OpenAICompletionModel",
+                Self::OpenAICompletionModel => "seedframe::providers::openai::OpenAICompletionModel",
             }
         )
     }
@@ -140,8 +140,8 @@ fn generate_builder(
                 ::seedframe::providers::openai::OpenAICompletionModel::new(std::env::var("SEEDFRAME_OPENAI_API_KEY").unwrap().to_string(), "https://api.openai.com/v1/chat/completions".to_string(), #model.to_string())
             };
             quote! {
-                #vis async fn build(preamble: String) -> Client<::seedframe::providers::openai::OpenAICompletionModel> {
-                    Client::new(
+                #vis async fn build(preamble: String) -> seedframe::completion::Client<::seedframe::providers::openai::OpenAICompletionModel> {
+                    seedframe::completion::Client::new(
                         #completion_model_init,
                         preamble,
                         0.5,
@@ -211,7 +211,7 @@ pub(crate) fn client_impl(
 
     Ok(quote! {
         #struct_vis struct #struct_ident{
-            inner: Client<#kind>,
+            inner: seedframe::completion::Client<#kind>,
         }
 
         impl #struct_ident {

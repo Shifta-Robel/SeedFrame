@@ -1,10 +1,4 @@
-use seedframe::{
-    completion::Client, embeddings::Embedder,
-    loader::builtins::file_loaders::file_once_loader::FileOnceLoader,
-    providers::openai::OpenAICompletionModel,
-    vector_store::in_memory_vec_store::InMemoryVectorStore,
-};
-use seedframe_macros::{client, embedder, loader, vector_store};
+use seedframe::prelude::*;
 
 #[loader(kind = "FileOnceLoader", path = "/tmp/data/**/*.txt")]
 pub struct MyLoader;

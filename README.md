@@ -57,13 +57,7 @@ Seedframe is a library for creating LLM applications like RAG systems. It provid
 A client type can be defined as such:
 
 ```rust
-use seedframe::{
-    completion::Client, embeddings::Embedder,
-    loader::builtins::file_loaders::file_once_loader::FileOnceLoader,
-    providers::openai::OpenAICompletionModel,
-    vector_store::in_memory_vec_store::InMemoryVectorStore,
-};
-use seedframe_macros::{client, embedder, loader, vector_store};
+use seedframe::prelude::*;
 
 // Data can be loaded using Loaders.
 // Users can write their own loaders

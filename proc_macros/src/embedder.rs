@@ -8,7 +8,7 @@ type DarlingError = darling::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct EmbedderConfig {
-    kind: String,
+    provider: String,
     #[darling(default)]
     model: Option<String>,
 }
@@ -39,7 +39,7 @@ impl Display for EmbedderMacroError {
             Self::UnknownEmbedderModel(l) => {
                 write!(
                     f,
-                    "Unknown embedding model kind: '{l}'. valid options are OpenAIEmbeddingModel"
+                    "Unknown embedding model provider: '{l}'. valid options are openai,"
                 )
             }
             Self::UnsupportedArgument(arg, embedder) => {
@@ -80,9 +80,9 @@ impl Display for BuiltInEmbedderType {
 }
 
 impl BuiltInEmbedderType {
-    fn from_str(kind: &str) -> Result<Self, EmbedderMacroError> {
-        match kind {
-            "OpenAIEmbeddingModel" => Ok(Self::OpenAIEmbeddingModel),
+    fn from_str(provider: &str) -> Result<Self, EmbedderMacroError> {
+        match provider {
+            "openai" => Ok(Self::OpenAIEmbeddingModel),
             unknown => Err(EmbedderMacroError::UnknownEmbedderModel(
                 unknown.to_string(),
             )),
@@ -134,7 +134,7 @@ fn generate_builder(
     vis: &syn::Visibility,
 ) -> proc_macro2::TokenStream {
     let vector_store_instanciated = quote! {
-        ::std::sync::Arc::new(::tokio::sync::Mutex::new(::std::boxed::Box::new(#vector_store_type::build().inner)))
+        ::std::sync::Arc::new(::tokio::sync::Mutex::new(::std::boxed::Box::new(#vector_store_type::build().await.unwrap().inner)))
     };
     let mut loader_instances = quote! {
     };
@@ -153,13 +153,13 @@ fn generate_builder(
             let model = config.model.as_ref().unwrap().to_string();
             let embedding_model_init = quote! {
                 {
-                    ::std::sync::Arc::new(::std::boxed::Box::new(seedframe::providers::openai::OpenAIEmbeddingModel::new(::std::env::var("SEEDFRAME_OPENAI_API_KEY").unwrap().to_string(), "https://api.openai.com/v1/embeddings".to_string(), #model.to_string())))
+                    ::std::sync::Arc::new(::std::boxed::Box::new(seedframe::providers::embeddings::openai::OpenAIEmbeddingModel::new(::std::env::var("SEEDFRAME_OPENAI_API_KEY").unwrap().to_string(), "https://api.openai.com/v1/embeddings".to_string(), #model.to_string())))
                 }
             };
             quote! {
                 #vis async fn build() -> Self {
                     Self { inner:
-                        Embedder::init(
+                        seedframe::embeddings::Embedder::init(
                             vec![#loader_instances],
                             #vector_store_instanciated,
                             #embedding_model_init,
@@ -243,7 +243,7 @@ pub(crate) fn embedder_impl(
         loaders
     };
 
-    let embedder_type = BuiltInEmbedderType::from_str(&config.kind)?;
+    let embedder_type = BuiltInEmbedderType::from_str(&config.provider)?;
     validate_config(&config, &embedder_type)?;
 
     let (struct_ident, struct_vis) = (&input.ident, &input.vis);
@@ -257,7 +257,7 @@ pub(crate) fn embedder_impl(
 
     Ok(quote! {
         #struct_vis struct #struct_ident{
-            inner: Embedder,
+            inner: seedframe::embeddings::Embedder,
         }
 
         impl #struct_ident {

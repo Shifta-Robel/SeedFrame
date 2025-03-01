@@ -3,7 +3,12 @@ use seedframe::prelude::*;
 #[loader(kind = "FileOnceLoader", path = "/tmp/data/**/*.txt")]
 pub struct MyLoader;
 
-#[vector_store(kind = "InMemoryVectorStore")]
+#[vector_store(
+    kind = "pinecone",
+    host = "https://test-sf-smth.pinecone.io",
+    env_var = "PINECONE_API_KEY",
+    source_tag = "seedframe"
+)]
 pub struct MyVectorStore;
 
 #[embedder(provider = "openai", model = "text-embedding-3-small")]

@@ -24,3 +24,8 @@ tracing-subscriber = "0.3.19"
 
 [features]
 pinecone = ["pinecone-sdk"]
+
+[[example]]
+name = "agent_with_pinecone"
+path = "examples/agent_with_pinecone.rs"
+required-features = ["pinecone"]

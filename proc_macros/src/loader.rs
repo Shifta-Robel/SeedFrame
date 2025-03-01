@@ -66,8 +66,8 @@ impl Display for BuiltinLoaderType {
             f,
             "{}",
             match self {
-                Self::FileOnceLoader => "FileOnceLoader",
-                Self::FileUpdatingLoader => "FileUpdatingLoader",
+                Self::FileOnceLoader => "seedframe::loader::builtins::file_loaders::file_once_loader::FileOnceLoader",
+                Self::FileUpdatingLoader => "seedframe::loader::builtins::file_loaders::file_updating_loader::FileUpdatingLoader",
                 Self::HttpOnceLoader => "HttpOnceLoader",
             }
         )
@@ -137,13 +137,17 @@ fn generate_builder(
             let path = config.path.as_ref().unwrap().to_string();
             quote! {
                 #vis fn build() -> Self {
-                    use seedframe::loader::builtins::file_loaders::file_once_loader::FileOnceLoaderBuilder;
-                    Self { inner: (FileOnceLoaderBuilder::new(vec![#path.to_string()]).unwrap().build().unwrap()) }
+                    Self { inner: (seedframe::loader::builtins::file_loaders::file_once_loader::FileOnceLoaderBuilder::new(vec![#path.to_string()]).unwrap().build().unwrap()) }
                 }
             }
         }
         BuiltinLoaderType::FileUpdatingLoader => {
-            quote! {}
+            let path = config.path.as_ref().unwrap().to_string();
+            quote! {
+                #vis fn build() -> Self {
+                    Self { inner: (seedframe::loader::builtins::file_loaders::file_updating_loader::FileUpdatingLoaderBuilder::new(vec![#path.to_string()]).unwrap().build().unwrap()) }
+                }
+            }
         }
         BuiltinLoaderType::HttpOnceLoader => {
             quote! {}

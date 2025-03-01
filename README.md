@@ -57,13 +57,7 @@ Seedframe is a library for creating LLM applications like RAG systems. It provid
 A client type can be defined as such:
 
 ```rust
-use seedframe::{
-    completion::Client, embeddings::Embedder,
-    loader::builtins::file_loaders::file_once_loader::FileOnceLoader,
-    providers::openai::OpenAICompletionModel,
-    vector_store::in_memory_vec_store::InMemoryVectorStore,
-};
-use seedframe_macros::{client, embedder, loader, vector_store};
+use seedframe::prelude::*;
 
 // Data can be loaded using Loaders.
 // Users can write their own loaders
@@ -81,7 +75,7 @@ pub struct MyVectorStore;
 // Before loaded data is stored, it needs to be embedded
 // using an Embedder. This one uses the OpenAI provider
 // as the client will be an OpenAI chat client.
-#[embedder(kind = "OpenAIEmbeddingModel", model = "text-embedding-3-small")]
+#[embedder(provider = "openai", model = "text-embedding-3-small")]
 struct MyEmbedder {
 
     // Notice how we register our vector store, and loaders
@@ -96,7 +90,7 @@ struct MyEmbedder {
 }
 
 // Finally, we construct our client out of our embedders
-#[client(kind = "OpenAICompletionModel", model = "gpt-4o-mini")]
+#[client(provider = "openai", model = "gpt-4o-mini")]
 struct MyClient {
     // we can have multiple embedders, as long as they
     // are compatible with our client.
@@ -136,10 +130,9 @@ async fn main() {
 ## RoadMap
 
 -   [ ] More customization options
--   [ ] More providers like DeepSeek, Anthropic, Gemini
+-   [ ] More embedding and text completion providers
 -   [ ] More loaders
 -   [ ] More vector store implementations
 -   [ ] Integration with platforms like X(Twitter), Discord, Telegram
--   [ ] Tracing
 -   and more&#x2026;
 

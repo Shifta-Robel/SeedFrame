@@ -1,19 +1,17 @@
 use crate::completion::{CompletionError, CompletionModel, Message, MessageHistory, TokenUsage};
-use crate::embeddings::model::{EmbeddingModel, ModelError};
 use async_trait::async_trait;
-use reqwest::Client;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
 
-pub struct OpenAICompletionModel {
+pub struct DeepseekCompletionModel {
     api_key: String,
     api_url: String,
     client: reqwest::Client,
     model: String,
 }
 
-impl OpenAICompletionModel {
+impl DeepseekCompletionModel {
     pub fn new(api_key: String, api_url: String, model: String) -> Self {
         Self {
             api_key,
@@ -27,24 +25,24 @@ impl OpenAICompletionModel {
 #[derive(Serialize, Deserialize, Eq, PartialEq)]
 #[serde(tag = "role", content = "content")]
 #[allow(non_camel_case_types)]
-pub enum OpenAIMessage {
+pub enum DeepseekMessage {
     system(String),
     user(String),
     assistant(String),
 }
 
-impl From<Message> for OpenAIMessage {
-    fn from(value: Message) -> OpenAIMessage {
+impl From<Message> for DeepseekMessage {
+    fn from(value: Message) -> DeepseekMessage {
         match value {
-            Message::Preamble(s) => OpenAIMessage::system(s),
-            Message::User(s) => OpenAIMessage::user(s),
-            Message::Assistant(s) => OpenAIMessage::assistant(s),
+            Message::Preamble(s) => DeepseekMessage::system(s),
+            Message::User(s) => DeepseekMessage::user(s),
+            Message::Assistant(s) => DeepseekMessage::assistant(s),
         }
     }
 }
 
 #[async_trait]
-impl CompletionModel for OpenAICompletionModel {
+impl CompletionModel for DeepseekCompletionModel {
     async fn send(
         &self,
         message: Message,
@@ -56,7 +54,7 @@ impl CompletionModel for OpenAICompletionModel {
         messages.push(message);
         let messages: Vec<_> = messages
             .into_iter()
-            .map(Into::<OpenAIMessage>::into)
+            .map(Into::<DeepseekMessage>::into)
             .collect();
 
         let request_body = json!({
@@ -66,13 +64,13 @@ impl CompletionModel for OpenAICompletionModel {
             "max_tokens": max_tokens,
         });
 
-        let response = self.client
+        let response = dbg!(self.client
             .post(&self.api_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&request_body)
             .send()
-            .await
+            .await)
             .map_err(|e| CompletionError::RequestError(e.to_string()))?;
 
         if response.status().is_success() {
@@ -107,87 +105,22 @@ impl CompletionModel for OpenAICompletionModel {
     }
 }
 
-pub struct OpenAIEmbeddingModel {
-    api_url: String,
-    api_key: String,
-    model: String,
-}
-
-impl OpenAIEmbeddingModel {
-    pub fn new(api_key: String, api_url: String, model: String) -> Self {
-        Self {
-            api_url,
-            api_key,
-            model,
-        }
-    }
-}
-
-#[derive(Deserialize)]
-struct OpenAIEmbeddingResponse {
-    pub data: Vec<OpenAIEmbeddingData>,
-}
-
-#[derive(Deserialize)]
-struct OpenAIEmbeddingData {
-    pub embedding: Vec<f64>,
-}
-
-#[async_trait]
-impl EmbeddingModel for OpenAIEmbeddingModel {
-    async fn embed(&self, data: &str) -> Result<Vec<f64>, ModelError> {
-        let client = Client::new();
-        let request_body = json!({
-                "input": data,
-                "model": self.model,
-        });
-        let response = client
-            .post(&self.api_url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&request_body)
-            .send()
-            .await
-            .map_err(|e| ModelError::RequestError(e.to_string()))?;
-
-        if response.status().is_success() {
-            let response = response
-                .json::<OpenAIEmbeddingResponse>()
-                .await
-                .map_err(|e| ModelError::ParseError(e.to_string()))?;
-
-            Ok(response
-                .data
-                .into_iter()
-                .map(|d| d.embedding)
-                .flatten()
-                .collect())
-        } else {
-            let error_message = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-
-            Err(ModelError::ProviderError(error_message))
-        }
-    }
-}
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn simple_openai_completion_request() {
+    async fn simple_deepseek_completion_request() {
         tracing_subscriber::fmt().init();
-        let api_key = std::env::var("SEEDFRAME_TEST_OPENAI_KEY")
+        let api_key = std::env::var("SEEDFRAME_TEST_DEEPSEEK_KEY")
             .unwrap()
             .to_string();
-        let api_url = "https://api.openai.com/v1/chat/completions".to_string();
-        let model = "gpt-4o-mini".to_string();
+        let api_url = "https://api.deepseek.com/chat/completions".to_string();
+        let model = "deepseek".to_string();
 
-        let openai_completion_model = OpenAICompletionModel::new(api_key, api_url, model);
+        let deepseek_completion_model = DeepseekCompletionModel::new(api_key, api_url, model);
 
-        let response = openai_completion_model
+        let response = deepseek_completion_model
             .send(
                 Message::User(
                     r#"
@@ -202,24 +135,9 @@ For this test to be considered successful, reply with "okay" without the quotes,
             )
             .await;
 
-        assert!(response.is_ok());
+        assert!(response.clone().is_ok());
 
         assert!(response.clone().is_ok_and(|v| v.0 == Message::Assistant("okay".to_string())));
         assert!(response.is_ok_and(|v| matches!(v.1, TokenUsage { prompt_tokens: Some(_), completion_tokens: Some(_), total_tokens: Some(_) })));
-    }
-
-    #[tokio::test]
-    async fn simple_openai_embed_request() {
-        let api_key = std::env::var("SEEDFRAME_TEST_OPENAI_KEY")
-            .unwrap()
-            .to_string();
-        let api_url = "https://api.openai.com/v1/embeddings".to_string();
-        let model = "text-embedding-3-small".to_string();
-
-        let openai_embedding_model = OpenAIEmbeddingModel::new(api_key, api_url, model);
-
-        let response = openai_embedding_model.embed("test").await;
-
-        assert!(response.is_ok());
     }
 }

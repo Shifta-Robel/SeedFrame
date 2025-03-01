@@ -9,7 +9,7 @@ use super::{VectorStore, VectorStoreError};
 use crate::embeddings::embedding::Embedding;
 use tokio::sync::Mutex;
 
-struct PineconeVectorStore {
+pub struct PineconeVectorStore {
     index: Mutex<Index>,
     namespace: Namespace,
 }
@@ -95,9 +95,7 @@ impl From<Embedding> for Vector {
         let id = value.id;
         let values = value.embedded_data.iter().map(|&v| v as f32).collect();
         let mut fields = BTreeMap::new();
-        fields
-            .insert("text".to_string(), value_from_str(value.raw_data))
-            .unwrap();
+        fields.insert("text".to_string(), value_from_str(value.raw_data));
         let metadata = Some(Metadata { fields });
         Vector {
             id,

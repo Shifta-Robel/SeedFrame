@@ -7,10 +7,15 @@ type DarlingError = darling::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct VectorStoreConfig {
-    /// just `InMemoryVectorStore` for now
     kind: String,
-    // #[darling(default)]
-    // url: Option<String>,
+    #[darling(default)]
+    host: Option<String>,
+    #[darling(default)]
+    namespace: Option<String>,
+    #[darling(default)]
+    env_var: Option<String>,
+    #[darling(default)]
+    source_tag: Option<String>
 }
 
 #[allow(unused)]
@@ -59,6 +64,7 @@ impl Display for VectorStoreMacroError {
 #[derive(Debug, Clone)]
 enum VectorStoreType {
     InMemoryVectorStore,
+    Pinecone,
 }
 
 impl Display for VectorStoreType {
@@ -67,7 +73,8 @@ impl Display for VectorStoreType {
             f,
             "{}",
             match self {
-                Self::InMemoryVectorStore => "InMemoryVectorStore",
+                Self::InMemoryVectorStore => "seedframe::vector_store::in_memory_vec_store::InMemoryVectorStore",
+                Self::Pinecone => "seedframe::vector_store::pinecone::PineconeVectorStore",
             }
         )
     }
@@ -77,6 +84,7 @@ impl VectorStoreType {
     fn from_str(kind: &str) -> Result<Self, VectorStoreMacroError> {
         match kind {
             "InMemoryVectorStore" => Ok(Self::InMemoryVectorStore),
+            "pinecone" => Ok(Self::Pinecone),
             unknown => Err(VectorStoreMacroError::UnknownVectorStore(
                 unknown.to_string(),
             )),
@@ -84,21 +92,27 @@ impl VectorStoreType {
     }
 
     fn required_args(&self) -> &'static [&'static str] {
-        &[]
+        match self {
+            Self::InMemoryVectorStore => &[],
+            Self::Pinecone => &["host"],
+        }
     }
 
     fn supported_args(&self) -> &'static [&'static str] {
-        &[]
+        match self {
+            Self::InMemoryVectorStore => &[],
+            Self::Pinecone => &["host", "namespace", "env_var", "source_tag"],
+        }
     }
 }
 
 fn validate_config(
-    _config: &VectorStoreConfig,
+    config: &VectorStoreConfig,
     vector_store_type: &VectorStoreType,
 ) -> Result<(), VectorStoreMacroError> {
     let required = vector_store_type.required_args();
     let supported = vector_store_type.supported_args();
-    let _check_arg = |name: &str, value: &Option<String>| {
+    let check_arg = |name: &str, value: &Option<String>| {
         if value.is_none() && required.contains(&name) {
             Err(VectorStoreMacroError::MissingArgument(
                 name.to_string(),
@@ -114,26 +128,52 @@ fn validate_config(
         }
     };
 
+    _ = check_arg("host", &config.host)?;
+    _ = check_arg("namespace", &config.namespace)?;
+    _ = check_arg("env_var", &config.env_var)?;
+    _ = check_arg("source_tag", &config.source_tag)?;
     Ok(())
 }
 
 fn generate_builder(
     vector_store_type: &VectorStoreType,
-    _config: &VectorStoreConfig,
+    config: &VectorStoreConfig,
     vis: &syn::Visibility,
 ) -> proc_macro2::TokenStream {
     match vector_store_type {
         VectorStoreType::InMemoryVectorStore => {
             quote! {
-                #vis fn build() -> Self {
-                    use seedframe::vector_store::in_memory_vec_store::InMemoryVectorStore;
-                    Self {
-                        inner: (InMemoryVectorStore::new())
-                    }
+                #vis async fn build() -> Result<Self, seedframe::vector_store::VectorStoreError> {
+                    Ok(Self {
+                        inner: (seedframe::vector_store::in_memory_vec_store::InMemoryVectorStore::new())
+                    })
+                }
+            }
+        },
+        VectorStoreType::Pinecone => {
+            let host: &str = config.host.as_ref().unwrap();
+            let env: Option<String> = config.env_var.clone();
+            let source_tag: Option<String> = config.source_tag.clone();
+            let namespace: Option<String> = config.namespace.clone();
+            //
+            let host_expr = syn::parse_str::<syn::Expr>(&format!("\"{host}\".to_string()")).unwrap();
+            let env_expr = option_expr(env);
+            let source_tag_expr = option_expr(source_tag);
+            let namespace_expr = option_expr(namespace);
+            quote! {
+                #vis async fn build() -> Result<Self, seedframe::vector_store::VectorStoreError> {
+                    Ok(Self {
+                        inner: PineconeVectorStore::new(#env_expr, #host_expr, #source_tag_expr, #namespace_expr).await?,
+                    })
                 }
             }
         }
     }
+}
+
+fn option_expr(opt: Option<String>) -> syn::Expr {
+    let expr = if let Some(v) = opt { &format!("Some(\"{}\".to_string())", v) }else { "None" };
+    syn::parse_str(expr).unwrap()
 }
 
 pub(crate) fn vector_store_impl(

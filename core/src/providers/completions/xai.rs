@@ -1,4 +1,5 @@
 use crate::completion::{CompletionError, CompletionModel, Message, MessageHistory, TokenUsage};
+use crate::tools::ToolSet;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde::Serialize;
@@ -47,6 +48,7 @@ impl CompletionModel for XaiCompletionModel {
         &self,
         message: Message,
         history: &MessageHistory,
+        tools: &ToolSet,
         temperature: f64,
         max_tokens: usize,
     ) -> Result<(Message, TokenUsage), CompletionError> {
@@ -57,9 +59,11 @@ impl CompletionModel for XaiCompletionModel {
             .map(Into::<XaiMessage>::into)
             .collect();
 
+        let tools: Vec<serde_json::Value> = tools.0.iter().map(|t| t.default_serializer()).collect();
         let request_body = json!({
             "model": self.model,
             "messages": messages,
+            "tools": tools,
             "temperature": temperature,
             "max_tokens": max_tokens,
         });
@@ -130,6 +134,7 @@ For this test to be considered successful, reply with "okay" without the quotes,
                     .to_string(),
                 ),
                 &vec![],
+                &ToolSet(vec![]),
                 0.0,
                 10,
             )

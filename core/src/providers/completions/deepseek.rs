@@ -1,4 +1,5 @@
 use crate::completion::{CompletionError, CompletionModel, Message, MessageHistory, TokenUsage};
+use crate::tools::ToolSet;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde::Serialize;
@@ -47,6 +48,7 @@ impl CompletionModel for DeepseekCompletionModel {
         &self,
         message: Message,
         history: &MessageHistory,
+        tools: &ToolSet,
         temperature: f64,
         max_tokens: usize,
     ) -> Result<(Message, TokenUsage), CompletionError> {
@@ -57,9 +59,11 @@ impl CompletionModel for DeepseekCompletionModel {
             .map(Into::<DeepseekMessage>::into)
             .collect();
 
+        let tools: Vec<serde_json::Value> = tools.0.iter().map(|t| t.default_serializer()).collect();
         let request_body = json!({
             "model": self.model,
             "messages": messages,
+            "tools": tools,
             "temperature": temperature,
             "max_tokens": max_tokens,
         });
@@ -85,6 +89,8 @@ impl CompletionModel for DeepseekCompletionModel {
                     "Invalid response body".to_string(),
                 ))?
                 .to_string();
+            
+            // let fn_calls =  response_json["choices"][0]["message"]["tool_calls"].as_array();
             let usage_response = &response_json["usage"];
             let usage_parse_error = CompletionError::ParseError("Failed to parse usage data from response".to_string());
             let token_usage =  TokenUsage {
@@ -130,6 +136,7 @@ For this test to be considered successful, reply with "okay" without the quotes,
                     .to_string(),
                 ),
                 &vec![],
+                &ToolSet(vec![]),
                 0.0,
                 10,
             )

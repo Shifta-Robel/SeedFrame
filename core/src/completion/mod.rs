@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use tracing::info;
 
-use crate::{embeddings::Embedder, vector_store::VectorStoreError};
+use crate::{embeddings::Embedder, tools::ToolSet, vector_store::VectorStoreError};
 
 /// Message that'll be sent in Completions
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -48,6 +48,7 @@ pub trait CompletionModel {
         &self,
         message: Message,
         history: &MessageHistory,
+        tools: &ToolSet,
         temperature: f64,
         max_tokens: usize,
     ) -> Result<(Message, TokenUsage), CompletionError>;
@@ -60,17 +61,19 @@ pub struct Client<M: CompletionModel> {
     // common prompt parameters
     temperature: f64,
     max_tokens: usize,
+    tools: Box<ToolSet>,
 
     embedders: Vec<Embedder>,
     token_usage: TokenUsage
 }
 
 impl<M: CompletionModel> Client<M> {
-    pub fn new(completion_model: M, preamble: String, temperature: f64, max_tokens: usize, embedders: Vec<Embedder>) -> Self {
+    pub fn new(completion_model: M, preamble: String, temperature: f64, max_tokens: usize, embedders: Vec<Embedder>, tools: ToolSet) -> Self {
         Self {
             completion_model,
             history: vec![Message::Preamble(preamble)],
             embedders,
+            tools: Box::new(tools),
             temperature,
             max_tokens,
             token_usage: TokenUsage::default()
@@ -94,7 +97,7 @@ impl<M: CompletionModel> Client<M> {
     /// The response will be stored in the client's history
     pub async fn prompt(&mut self, prompt: &str) -> Result<Message, CompletionError> {
         let (response, token_usage) = self
-            .send_prompt(prompt, &self.history, self.temperature, self.max_tokens)
+            .send_prompt(prompt, &self.history, &self.tools, self.temperature, self.max_tokens)
             .await?;
 
         self.history.push(response.clone());
@@ -120,7 +123,7 @@ impl<M: CompletionModel> Client<M> {
         history: Option<MessageHistory>,
     ) -> Result<Message, CompletionError> {
         let (response, token_usage) = self
-            .send_prompt( prompt, &history.unwrap_or(self.history.clone()), self.temperature, self.max_tokens).await?;
+            .send_prompt( prompt, &history.unwrap_or(self.history.clone()), &self.tools, self.temperature, self.max_tokens).await?;
 
         self.update_token_usage(&token_usage);
         if token_usage.total_tokens.is_some() {
@@ -134,6 +137,7 @@ impl<M: CompletionModel> Client<M> {
         &self,
         prompt: &str,
         history: &MessageHistory,
+        tools: &ToolSet,
         temperature: f64,
         max_tokens: usize,
     ) -> Result<(Message, TokenUsage), CompletionError> {
@@ -142,7 +146,7 @@ impl<M: CompletionModel> Client<M> {
             Message::User(format!("{prompt}\n\n<context>\n{context}\n</context>\n"));
         self
             .completion_model
-            .send(message_with_context, history, temperature, max_tokens)
+            .send(message_with_context, history, tools, temperature, max_tokens)
             .await
     }
 

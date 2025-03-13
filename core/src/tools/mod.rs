@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use schemars::{schema_for, JsonSchema};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 #[async_trait]
@@ -18,6 +18,7 @@ pub trait Tool: Send + Sync {
             "type": "function",
             "function": {
                 "name": self.name(),
+                "strict": true,
                 "description": self.description(),
                 "parameters": parameters 
             }
@@ -29,16 +30,19 @@ pub struct ToolSet(pub Vec<Box<dyn Tool>>);
 
 #[allow(unused)]
 impl ToolSet {
-    fn find_tool(&self, _name: &str) -> Box<dyn Tool> {
+    pub fn find_tool(&self, _name: &str) -> Box<dyn Tool> {
         todo!()
     }
-    fn add_tool(&mut self, _tool: Box<dyn Tool>) {
+    pub fn add_tool(&mut self, _tool: Box<dyn Tool>) {
         todo!()
     }
-    fn remove_tool(&mut self, _name: &str) {
+    pub fn remove_tool(&mut self, _name: &str) {
         todo!()
     }
-    fn list_tools(&self) -> Vec<Box<dyn Tool>> {
+    pub fn list_tools(&self) -> Vec<Box<dyn Tool>> {
+        todo!()
+    }
+    pub async fn call(&self, name: &str, args: &str) -> Value {
         todo!()
     }
 }
@@ -70,12 +74,33 @@ impl ToolArg {
     }
 }
 
+
+/// Represents a tool call requested by the assistant
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: serde_json::Value,
+}
+
+/// Represents the output of a tool execution
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolResponse {
+    pub id: String,
+    pub name: String,
+    pub content: serde_json::Value,
+}
+
 pub fn build_parameters_schema(args: &[ToolArg]) -> Value {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
 
     for arg in args {
-        properties.insert(arg.name.clone(), arg.schema.clone());
+        let mut schema = arg.schema.clone();
+        if let Some(obj) = schema.as_object_mut() {
+            obj.remove("minimum");
+        }       
+        properties.insert(arg.name.clone(), schema.clone());
         required.push(json!(arg.name));
     }
 

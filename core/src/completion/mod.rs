@@ -1,19 +1,25 @@
 use async_trait::async_trait;
+use serde::Serializer;
 use tracing::info;
 
-use crate::{embeddings::Embedder, tools::ToolSet, vector_store::VectorStoreError};
+use crate::{embeddings::Embedder, tools::{ToolCall, ToolResponse, ToolSet}, vector_store::VectorStoreError};
 
 /// Message that'll be sent in Completions
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Message {
     /// System prompt
     Preamble(String),
-    /// Message sent by user
-    User(String),
+    /// Message sent by the user
+    User {
+        content: String,
+        tool_responses: Option<Vec<ToolResponse>>,
+    },
     /// Response from the assistant
-    Assistant(String),
+    Assistant {
+        content: String,
+        tool_calls: Option<Vec<ToolCall>>,
+    },
 }
-
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct TokenUsage {
@@ -143,7 +149,7 @@ impl<M: CompletionModel> Client<M> {
     ) -> Result<(Message, TokenUsage), CompletionError> {
         let context = self.get_context(prompt).await?;
         let message_with_context =
-            Message::User(format!("{prompt}\n\n<context>\n{context}\n</context>\n"));
+            Message::User{content: format!("{prompt}\n\n<context>\n{context}\n</context>\n"), tool_responses: None};
         self
             .completion_model
             .send(message_with_context, history, tools, temperature, max_tokens)
@@ -160,6 +166,24 @@ impl<M: CompletionModel> Client<M> {
         }
         Ok(context)
     }
+}
+
+pub fn serialize_user<S>(content: &str, _tool_calls: &Option<Vec<ToolResponse>>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_newtype_struct("user", &content)
+}
+
+pub fn serialize_assistant<S>(content: &str, tool_calls: &Option<Vec<ToolCall>>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let combined_content = match tool_calls {
+        Some(calls) => &format!("{} {:?}", content, calls),
+        None => content,
+    };
+    serializer.serialize_newtype_struct("assistant", &combined_content)
 }
 
 fn combine_options(a: Option<u64>, b: Option<u64>) -> Option<u64> {

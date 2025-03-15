@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use serde::Serializer;
+use serde_json::Value;
 use tracing::info;
 
-use crate::{embeddings::Embedder, tools::{ToolCall, ToolResponse, ToolSet}, vector_store::VectorStoreError};
+use crate::{embeddings::Embedder, tools::{ToolCall, ToolError, ToolResponse, ToolSet}, vector_store::VectorStoreError};
 
 /// Message that'll be sent in Completions
 #[derive(Debug, Clone, PartialEq)]
@@ -115,12 +116,6 @@ impl<M: CompletionModel> Client<M> {
         Ok(response)
     }
 
-    fn update_token_usage(&mut self, usage: &TokenUsage) {
-        self.token_usage.prompt_tokens = combine_options(self.token_usage.prompt_tokens, usage.prompt_tokens);
-        self.token_usage.completion_tokens = combine_options(self.token_usage.completion_tokens, usage.completion_tokens);
-        self.token_usage.total_tokens = combine_options(self.token_usage.total_tokens, usage.total_tokens);
-    }
-
     /// Prompt the LLM with a custom history, and get a response.
     /// Response won't be stored in the client's history
     pub async fn one_shot(
@@ -137,6 +132,16 @@ impl<M: CompletionModel> Client<M> {
         }
 
         Ok(response)
+    }
+
+    pub async fn run_tool(&self, call: &ToolCall) -> Result<Value, ToolError> {
+        self.tools.call(&call.name, &call.arguments).await
+    }
+
+    fn update_token_usage(&mut self, usage: &TokenUsage) {
+        self.token_usage.prompt_tokens = combine_options(self.token_usage.prompt_tokens, usage.prompt_tokens);
+        self.token_usage.completion_tokens = combine_options(self.token_usage.completion_tokens, usage.completion_tokens);
+        self.token_usage.total_tokens = combine_options(self.token_usage.total_tokens, usage.total_tokens);
     }
 
     async fn send_prompt(

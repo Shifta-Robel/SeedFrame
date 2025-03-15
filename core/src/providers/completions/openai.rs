@@ -133,7 +133,7 @@ impl CompletionModel for OpenAICompletionModel {
 mod tests {
     use serde_json::Value;
 
-    use crate::tools::{Tool, ToolArg};
+    use crate::tools::{Tool, ToolArg, ToolError};
 
     use super::*;
 
@@ -219,12 +219,12 @@ For this test to be considered successful, reply with "okay" without the quotes,
 
         #[async_trait]
         impl Tool for JokeTool {
-            async fn call(&self, args: Value) -> Result<Value, serde_json::Error> {
+            async fn call(&self, args: &Value) -> Result<Value, ToolError> {
                 #[derive(serde::Deserialize)]
                 struct Params {
                     lang: String,
                 }
-                let params: Params = serde_json::from_value(args)?;
+                let params: Params = serde_json::from_value(args.clone())?;
                 Ok(serde_json::Value::from(tell_joke(&params.lang)))
             }
             fn name(&self) -> &str {
@@ -239,12 +239,12 @@ For this test to be considered successful, reply with "okay" without the quotes,
         }
         #[async_trait]
         impl Tool for PoemTool{
-            async fn call(&self, args: Value) -> Result<Value, serde_json::Error> {
+            async fn call(&self, args: &Value) -> Result<Value, ToolError> {
                 #[derive(serde::Deserialize)]
                 struct Params {
                     lenght: u32,
                 }
-                let params: Params = serde_json::from_value(args)?;
+                let params: Params = serde_json::from_value(args.clone())?;
                 Ok(serde_json::Value::from(tell_poem(params.lenght)))
             }
             fn name(&self) -> &str {

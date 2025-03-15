@@ -9,7 +9,7 @@ pub trait Tool: Send + Sync {
     fn description(&self) -> &str;
     fn args(&self) -> &[ToolArg];
 
-    async fn call(&self, args: Value) -> Result<Value, serde_json::Error>;
+    async fn call(&self, args: &Value) -> Result<Value, ToolError>;
     fn output_schema(&self) -> Option<Value> { None }
 
     fn default_serializer(&self) -> Value {
@@ -26,24 +26,55 @@ pub trait Tool: Send + Sync {
     }
 }
 
+pub enum ToolError {
+    ToolNotFound,
+    ToolCallError(Box<dyn std::error::Error + Send + Sync>),
+    JsonError(serde_json::Error),
+}
+
+impl From<serde_json::Error> for ToolError {
+    fn from(value: serde_json::Error) -> Self {
+        Self::JsonError(value)
+    }
+}
+
+impl From<Box<dyn std::error::Error + Send + Sync>> for ToolError {
+    fn from(value: Box<dyn std::error::Error + Send + Sync>) -> Self {
+        Self::ToolCallError(value)
+    }
+}
+
 pub struct ToolSet(pub Vec<Box<dyn Tool>>);
 
 #[allow(unused)]
 impl ToolSet {
-    pub fn find_tool(&self, _name: &str) -> Box<dyn Tool> {
-        todo!()
+    pub fn find_tool(&self, name: &str) -> Result<&Box<dyn Tool>, ToolError> {
+        self.0.iter().find(|t| {
+            t.name() == name
+        }).ok_or(ToolError::ToolNotFound)
     }
-    pub fn add_tool(&mut self, _tool: Box<dyn Tool>) {
-        todo!()
+
+    pub fn add_tool(&mut self, tool: Box<dyn Tool>) {
+        self.0.push(tool)
     }
-    pub fn remove_tool(&mut self, _name: &str) {
-        todo!()
+
+    pub fn remove_tool(&mut self, name: &str) -> Result<(), ToolError> {
+        let pos = self.0.iter().position(|t| {
+            t.name() == name
+        }).ok_or(ToolError::ToolNotFound)?;
+        self.0.remove(pos);
+        Ok(())
     }
+
     pub fn list_tools(&self) -> Vec<Box<dyn Tool>> {
         todo!()
     }
-    pub async fn call(&self, name: &str, args: &str) -> Value {
-        todo!()
+
+    pub async fn call(&self, name: &str, args: &Value) -> Result<Value, ToolError> {
+        let tool = self.0.iter().find(|t| {
+            t.name() == name
+        }).ok_or(ToolError::ToolNotFound)?;
+        tool.call(args).await
     }
 }
 

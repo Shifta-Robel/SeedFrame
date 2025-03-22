@@ -1,7 +1,10 @@
-use crate::completion::{CompletionError, CompletionModel, Message, serialize_user, serialize_assistant, MessageHistory, TokenUsage};
+use crate::completion::{
+    serialize_assistant, serialize_user, CompletionError, CompletionModel, Message, MessageHistory,
+    TokenUsage,
+};
 use crate::tools::{ToolCall, ToolResponse, ToolSet};
 use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 pub struct OpenAICompletionModel {
@@ -43,8 +46,20 @@ impl From<Message> for OpenAIMessage {
     fn from(value: Message) -> OpenAIMessage {
         match value {
             Message::Preamble(s) => OpenAIMessage::system(s),
-            Message::User { content, tool_responses } => Self::user { content, tool_responses },
-            Message::Assistant { content, tool_calls } => Self::assistant { content , tool_calls }
+            Message::User {
+                content,
+                tool_responses,
+            } => Self::user {
+                content,
+                tool_responses,
+            },
+            Message::Assistant {
+                content,
+                tool_calls,
+            } => Self::assistant {
+                content,
+                tool_calls,
+            },
         }
     }
 }
@@ -66,7 +81,8 @@ impl CompletionModel for OpenAICompletionModel {
             .map(Into::<OpenAIMessage>::into)
             .collect();
 
-        let tools_serialized: Vec<serde_json::Value> = tools.0.iter().map(|t| t.default_serializer()).collect();
+        let tools_serialized: Vec<serde_json::Value> =
+            tools.0.iter().map(|t| t.default_serializer()).collect();
         let request_body = json!({
             "model": self.model,
             "messages": messages,
@@ -75,7 +91,8 @@ impl CompletionModel for OpenAICompletionModel {
             "max_tokens": max_tokens,
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(&self.api_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
@@ -93,31 +110,61 @@ impl CompletionModel for OpenAICompletionModel {
             let resp_msg_json = &response_json["choices"][0]["message"]["content"];
             let mut response_message = String::new();
             if !resp_msg_json.is_null() {
-                response_message = resp_msg_json.as_str()
+                response_message = resp_msg_json
+                    .as_str()
                     .ok_or(CompletionError::ParseError(
-                    "Invalid response body".to_string(),
-                ))?
-                .to_string();
+                        "Invalid response body".to_string(),
+                    ))?
+                    .to_string();
             }
 
-            let tool_calls_json = response_json["choices"][0]["message"]["tool_calls"].as_array().unwrap();
-            let mut tool_calls: Option<Vec<ToolCall>> = if tool_calls_json.is_empty() { None } else { Some(vec![]) };
+            let tool_calls_json = response_json["choices"][0]["message"]["tool_calls"]
+                .as_array()
+                .unwrap();
+            let mut tool_calls: Option<Vec<ToolCall>> = if tool_calls_json.is_empty() {
+                None
+            } else {
+                Some(vec![])
+            };
             for tc in tool_calls_json {
                 let id = tc["id"].as_str().unwrap().to_string();
                 let name = tc["function"]["name"].as_str().unwrap().to_string();
-                let arguments = tc["function"]["arguments"].clone();
-                tool_calls.as_mut().unwrap().push(ToolCall { id, name, arguments });
+                let arguments = tc["function"]["arguments"].clone().to_string();
+                tool_calls.as_mut().unwrap().push(ToolCall {
+                    id,
+                    name,
+                    arguments,
+                });
             }
 
             let usage_response = &response_json["usage"];
-            let usage_parse_error = CompletionError::ParseError("Failed to parse usage data from response".to_string());
-            let token_usage =  TokenUsage {
-                prompt_tokens: Some(usage_response["prompt_tokens"].as_u64().ok_or(usage_parse_error.clone())?),
-                completion_tokens: Some(usage_response["completion_tokens"].as_u64().ok_or(usage_parse_error.clone())?),
-                total_tokens: Some(usage_response["total_tokens"].as_u64().ok_or(usage_parse_error)?),
+            let usage_parse_error =
+                CompletionError::ParseError("Failed to parse usage data from response".to_string());
+            let token_usage = TokenUsage {
+                prompt_tokens: Some(
+                    usage_response["prompt_tokens"]
+                        .as_u64()
+                        .ok_or(usage_parse_error.clone())?,
+                ),
+                completion_tokens: Some(
+                    usage_response["completion_tokens"]
+                        .as_u64()
+                        .ok_or(usage_parse_error.clone())?,
+                ),
+                total_tokens: Some(
+                    usage_response["total_tokens"]
+                        .as_u64()
+                        .ok_or(usage_parse_error)?,
+                ),
             };
 
-            Ok((Message::Assistant{content: response_message, tool_calls}, token_usage))
+            Ok((
+                Message::Assistant {
+                    content: response_message,
+                    tool_calls,
+                },
+                token_usage,
+            ))
         } else {
             let error_message = response
                 .text()
@@ -133,7 +180,7 @@ impl CompletionModel for OpenAICompletionModel {
 mod tests {
     use serde_json::Value;
 
-    use crate::tools::{Tool, ToolArg, ToolError};
+    use crate::tools::{ExecutionStrategy, Tool, ToolArg, ToolError};
 
     use super::*;
 
@@ -150,16 +197,16 @@ mod tests {
 
         let response = openai_completion_model
             .send(
-                Message::User{
+                Message::User {
                     content: r#"
 This is a test from a software library that uses this LLM assistant.
 For this test to be considered successful, reply with "okay" without the quotes, and NOTHING else.
 "#
                     .to_string(),
-                    tool_responses: None
+                    tool_responses: None,
                 },
                 &vec![],
-                &ToolSet(vec![]),
+                &ToolSet(vec![], ExecutionStrategy::FailEarly),
                 0.0,
                 10,
             )
@@ -167,8 +214,19 @@ For this test to be considered successful, reply with "okay" without the quotes,
 
         assert!(response.is_ok());
 
-        assert!(response.clone().is_ok_and(|v| v.0 == Message::Assistant{content:"okay".to_string(), tool_calls: None}));
-        assert!(response.is_ok_and(|v| matches!(v.1, TokenUsage { prompt_tokens: Some(_), completion_tokens: Some(_), total_tokens: Some(_) })));
+        assert!(response.clone().is_ok_and(|v| v.0
+            == Message::Assistant {
+                content: "okay".to_string(),
+                tool_calls: None
+            }));
+        assert!(response.is_ok_and(|v| matches!(
+            v.1,
+            TokenUsage {
+                prompt_tokens: Some(_),
+                completion_tokens: Some(_),
+                total_tokens: Some(_)
+            }
+        )));
     }
     #[tokio::test]
     async fn openai_toolcall_test() {
@@ -182,9 +240,9 @@ For this test to be considered successful, reply with "okay" without the quotes,
         let openai_completion_model = OpenAICompletionModel::new(api_key, api_url, model);
         let response = openai_completion_model
             .send(
-                Message::User{
+                Message::User {
                     content: "Tell me a joke in Farsi".to_string(),
-                    tool_responses: None
+                    tool_responses: None,
                 },
                 &vec![],
                 &get_tools(),
@@ -194,20 +252,40 @@ For this test to be considered successful, reply with "okay" without the quotes,
             .await;
 
         assert!(response.is_ok());
-        assert!(matches!(response.unwrap().0, Message::Assistant { content: _, tool_calls: Some(_)}))
+        assert!(matches!(
+            response.unwrap().0,
+            Message::Assistant {
+                content: _,
+                tool_calls: Some(_)
+            }
+        ))
     }
 
     fn get_tools() -> ToolSet {
-        struct JokeTool { args: Vec<ToolArg> }
-        struct PoemTool { args: Vec<ToolArg> }
+        struct JokeTool {
+            args: Vec<ToolArg>,
+        }
+        struct PoemTool {
+            args: Vec<ToolArg>,
+        }
         impl JokeTool {
-            pub fn new() -> Self{
-                Self { args: vec![ToolArg::new::<String>("lang", "language to tell the joke in")] }
+            pub fn new() -> Self {
+                Self {
+                    args: vec![ToolArg::new::<String>(
+                        "lang",
+                        "language to tell the joke in",
+                    )],
+                }
             }
         }
         impl PoemTool {
-            pub fn new() -> Self{
-                Self { args: vec![ToolArg::new::<u32>("length", "how many words the poem should be")] }
+            pub fn new() -> Self {
+                Self {
+                    args: vec![ToolArg::new::<u32>(
+                        "length",
+                        "how many words the poem should be",
+                    )],
+                }
             }
         }
         fn tell_joke(lang: &str) -> String {
@@ -238,13 +316,13 @@ For this test to be considered successful, reply with "okay" without the quotes,
             }
         }
         #[async_trait]
-        impl Tool for PoemTool{
-            async fn call(&self, args: &Value) -> Result<Value, ToolError> {
+        impl Tool for PoemTool {
+            async fn call(&self, args: &str) -> Result<Value, ToolError> {
                 #[derive(serde::Deserialize)]
                 struct Params {
                     lenght: u32,
                 }
-                let params: Params = serde_json::from_value(args.clone())?;
+                let params: Params = serde_json::from_str(args)?;
                 Ok(serde_json::Value::from(tell_poem(params.lenght)))
             }
             fn name(&self) -> &str {
@@ -257,6 +335,9 @@ For this test to be considered successful, reply with "okay" without the quotes,
                 "Tells poems with the given number of words"
             }
         }
-        ToolSet(vec![Box::new(JokeTool::new()), Box::new(PoemTool::new())])
+        ToolSet(
+            vec![Box::new(JokeTool::new()), Box::new(PoemTool::new())],
+            ExecutionStrategy::FailEarly,
+        )
     }
 }

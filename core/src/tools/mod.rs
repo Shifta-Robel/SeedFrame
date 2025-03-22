@@ -9,8 +9,10 @@ pub trait Tool: Send + Sync {
     fn description(&self) -> &str;
     fn args(&self) -> &[ToolArg];
 
-    async fn call(&self, args: &Value) -> Result<Value, ToolError>;
-    fn output_schema(&self) -> Option<Value> { None }
+    async fn call(&self, args: &str) -> Result<Value, ToolError>;
+    fn output_schema(&self) -> Option<Value> {
+        None
+    }
 
     fn default_serializer(&self) -> Value {
         let parameters = build_parameters_schema(self.args());
@@ -20,14 +22,14 @@ pub trait Tool: Send + Sync {
                 "name": self.name(),
                 "strict": true,
                 "description": self.description(),
-                "parameters": parameters 
+                "parameters": parameters
             }
         })
     }
 }
 
+#[derive(Debug)]
 pub enum ToolError {
-    ToolNotFound,
     ToolCallError(Box<dyn std::error::Error + Send + Sync>),
     JsonError(serde_json::Error),
 }
@@ -44,24 +46,46 @@ impl From<Box<dyn std::error::Error + Send + Sync>> for ToolError {
     }
 }
 
-pub struct ToolSet(pub Vec<Box<dyn Tool>>);
+pub enum ExecutionStrategy {
+    FailEarly,
+    BestEffort,
+}
+
+pub struct ToolSet(pub Vec<Box<dyn Tool>>, pub ExecutionStrategy);
+
+#[derive(Debug)]
+pub enum ToolSetError {
+    ToolNotFound,
+    EmptyMessageHistory,
+    LastMessageNotAToolCall,
+    ToolError(ToolError),
+}
+
+impl From<ToolError> for ToolSetError {
+    fn from(value: ToolError) -> Self {
+        Self::ToolError(value)
+    }
+}
 
 #[allow(unused)]
 impl ToolSet {
-    pub fn find_tool(&self, name: &str) -> Result<&Box<dyn Tool>, ToolError> {
-        self.0.iter().find(|t| {
-            t.name() == name
-        }).ok_or(ToolError::ToolNotFound)
+    pub fn find_tool(&self, name: &str) -> Result<&Box<dyn Tool>, ToolSetError> {
+        self.0
+            .iter()
+            .find(|t| t.name() == name)
+            .ok_or(ToolSetError::ToolNotFound)
     }
 
     pub fn add_tool(&mut self, tool: Box<dyn Tool>) {
         self.0.push(tool)
     }
 
-    pub fn remove_tool(&mut self, name: &str) -> Result<(), ToolError> {
-        let pos = self.0.iter().position(|t| {
-            t.name() == name
-        }).ok_or(ToolError::ToolNotFound)?;
+    pub fn remove_tool(&mut self, name: &str) -> Result<(), ToolSetError> {
+        let pos = self
+            .0
+            .iter()
+            .position(|t| t.name() == name)
+            .ok_or(ToolSetError::ToolNotFound)?;
         self.0.remove(pos);
         Ok(())
     }
@@ -70,11 +94,27 @@ impl ToolSet {
         todo!()
     }
 
-    pub async fn call(&self, name: &str, args: &Value) -> Result<Value, ToolError> {
-        let tool = self.0.iter().find(|t| {
-            t.name() == name
-        }).ok_or(ToolError::ToolNotFound)?;
-        tool.call(args).await
+    pub async fn call(
+        &self,
+        id: &str,
+        name: &str,
+        args: &str,
+    ) -> Result<ToolResponse, ToolSetError> {
+        let tool = self
+            .0
+            .iter()
+            .find(|t| t.name() == name)
+            .ok_or(ToolSetError::ToolNotFound)?;
+        let v = tool
+            .call(args)
+            .await
+            .map_err(|e| ToolSetError::from(e))
+            .unwrap();
+        Ok(ToolResponse {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            content: v,
+        })
     }
 }
 
@@ -95,7 +135,7 @@ impl ToolArg {
             obj.remove("format");
             obj.remove("title");
             obj.insert("description".to_string(), json!(description));
-        }       
+        }
 
         ToolArg {
             name: name.to_string(),
@@ -105,13 +145,12 @@ impl ToolArg {
     }
 }
 
-
 /// Represents a tool call requested by the assistant
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
-    pub arguments: serde_json::Value,
+    pub arguments: String,
 }
 
 /// Represents the output of a tool execution
@@ -130,7 +169,7 @@ pub fn build_parameters_schema(args: &[ToolArg]) -> Value {
         let mut schema = arg.schema.clone();
         if let Some(obj) = schema.as_object_mut() {
             obj.remove("minimum");
-        }       
+        }
         properties.insert(arg.name.clone(), schema.clone());
         required.push(json!(arg.name));
     }

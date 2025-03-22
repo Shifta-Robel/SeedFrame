@@ -1,6 +1,6 @@
-use async_trait::async_trait;
 #[cfg(feature = "pinecone")]
 use ::pinecone_sdk::utils::errors::PineconeError;
+use async_trait::async_trait;
 
 use super::embeddings::embedding::Embedding;
 

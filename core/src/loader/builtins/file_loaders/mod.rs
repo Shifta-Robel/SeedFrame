@@ -10,7 +10,7 @@ pub mod file_once_loader;
 pub mod file_updating_loader;
 
 #[allow(unused)]
-pub use file_once_loader::{FileOnceLoaderBuilder, FileOnceLoader};
+pub use file_once_loader::{FileOnceLoader, FileOnceLoaderBuilder};
 use tokio::sync::broadcast::error::SendError;
 
 use crate::document::Document;
@@ -22,7 +22,7 @@ pub enum FileLoaderError {
     FailedToSendDocument(SendError<Document>),
 }
 
-impl From<glob::PatternError> for FileLoaderError{
+impl From<glob::PatternError> for FileLoaderError {
     fn from(value: glob::PatternError) -> Self {
         Self::InvalidGlobPattern(value)
     }

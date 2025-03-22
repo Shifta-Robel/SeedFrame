@@ -1,8 +1,11 @@
-use std::{io, path::{Path,PathBuf}};
 use glob::{glob, Pattern};
+use pdf_extract::extract_text;
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 use tracing::{error, info, instrument};
 use walkdir::WalkDir;
-use pdf_extract::extract_text;
 
 use crate::document::Document;
 
@@ -87,7 +90,8 @@ pub(super) fn load_initial(patterns: &[Pattern]) -> Vec<Document> {
 pub(super) fn extract_parent_dir(pattern: &str) -> PathBuf {
     let glob_indicators = ['*', '?', '[', '!'];
     let dirs: Vec<_> = pattern.split('/').collect();
-    let idx = dirs.iter()
+    let idx = dirs
+        .iter()
         .position(|part| glob_indicators.iter().any(|&c| part.contains(c)))
         .unwrap_or(dirs.len());
 
@@ -104,7 +108,12 @@ pub(super) fn extract_parent_dir(pattern: &str) -> PathBuf {
 
 pub(super) fn get_dirs_to_watch(paths: &[PathBuf]) -> Vec<PathBuf> {
     paths
-        .iter().filter(|path| {
-            !paths.iter().any(|other| *path != other && path.starts_with(other))
-        }).cloned().collect()
+        .iter()
+        .filter(|path| {
+            !paths
+                .iter()
+                .any(|other| *path != other && path.starts_with(other))
+        })
+        .cloned()
+        .collect()
 }

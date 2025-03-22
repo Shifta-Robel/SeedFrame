@@ -64,7 +64,9 @@ impl Embedder {
                 while let Ok(doc) = listener.recv().await {
                     let embedded_data = if !&doc.data.is_empty() {
                         embedding_model.embed(&doc.data).await.unwrap()
-                    } else { vec![] };
+                    } else {
+                        vec![]
+                    };
                     vector_store
                         .lock()
                         .await

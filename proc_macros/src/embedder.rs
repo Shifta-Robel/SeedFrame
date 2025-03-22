@@ -1,6 +1,6 @@
-use quote::ToTokens;
 use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::TokenStream;
+use quote::ToTokens;
 use quote::{format_ident, quote};
 use std::fmt::Display;
 
@@ -136,8 +136,7 @@ fn generate_builder(
     let vector_store_instanciated = quote! {
         ::std::sync::Arc::new(::tokio::sync::Mutex::new(::std::boxed::Box::new(#vector_store_type::build().await.unwrap().inner)))
     };
-    let mut loader_instances = quote! {
-    };
+    let mut loader_instances = quote! {};
 
     for loader_type in loader_types {
         let string_type = loader_type.to_token_stream().to_string().to_uppercase();

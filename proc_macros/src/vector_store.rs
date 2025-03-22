@@ -15,7 +15,7 @@ struct VectorStoreConfig {
     #[darling(default)]
     env_var: Option<String>,
     #[darling(default)]
-    source_tag: Option<String>
+    source_tag: Option<String>,
 }
 
 #[allow(unused)]
@@ -73,7 +73,8 @@ impl Display for VectorStoreType {
             f,
             "{}",
             match self {
-                Self::InMemoryVectorStore => "seedframe::vector_store::in_memory_vec_store::InMemoryVectorStore",
+                Self::InMemoryVectorStore =>
+                    "seedframe::vector_store::in_memory_vec_store::InMemoryVectorStore",
                 Self::Pinecone => "seedframe::vector_store::pinecone::PineconeVectorStore",
             }
         )
@@ -149,14 +150,15 @@ fn generate_builder(
                     })
                 }
             }
-        },
+        }
         VectorStoreType::Pinecone => {
             let host: &str = config.host.as_ref().unwrap();
             let env: Option<String> = config.env_var.clone();
             let source_tag: Option<String> = config.source_tag.clone();
             let namespace: Option<String> = config.namespace.clone();
             //
-            let host_expr = syn::parse_str::<syn::Expr>(&format!("\"{host}\".to_string()")).unwrap();
+            let host_expr =
+                syn::parse_str::<syn::Expr>(&format!("\"{host}\".to_string()")).unwrap();
             let env_expr = option_expr(env);
             let source_tag_expr = option_expr(source_tag);
             let namespace_expr = option_expr(namespace);
@@ -172,7 +174,11 @@ fn generate_builder(
 }
 
 fn option_expr(opt: Option<String>) -> syn::Expr {
-    let expr = if let Some(v) = opt { &format!("Some(\"{}\".to_string())", v) }else { "None" };
+    let expr = if let Some(v) = opt {
+        &format!("Some(\"{}\".to_string())", v)
+    } else {
+        "None"
+    };
     syn::parse_str(expr).unwrap()
 }
 

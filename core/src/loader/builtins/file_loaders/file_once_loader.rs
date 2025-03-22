@@ -1,11 +1,11 @@
 use async_trait::async_trait;
 use glob::Pattern;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, instrument};
-use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::{document::Document, loader::Loader};
 use super::{utils::load_initial, FileLoaderError};
+use crate::{document::Document, loader::Loader};
 
 #[derive(Debug)]
 /// A builder for constructing a `FileOnceLoader`.
@@ -14,7 +14,7 @@ use super::{utils::load_initial, FileLoaderError};
 /// and parses the files into `Document`s.
 pub struct FileOnceLoaderBuilder {
     glob_patterns: Vec<String>,
-    evaluated: Vec<glob::Pattern>
+    evaluated: Vec<glob::Pattern>,
 }
 
 impl FileOnceLoaderBuilder {
@@ -34,7 +34,10 @@ impl FileOnceLoaderBuilder {
             .collect::<Result<_, _>>()?;
         info!("Successfully evaluated {} glob patterns", evaluated.len());
 
-        Ok(Self { glob_patterns, evaluated })
+        Ok(Self {
+            glob_patterns,
+            evaluated,
+        })
     }
 
     #[instrument(fields(self = format!("FileOnceLoaderBuilder {{glob_patterns: {:?}}}", self.glob_patterns)))]
@@ -53,7 +56,10 @@ impl FileOnceLoaderBuilder {
             Err(FileLoaderError::NoMatchingDocuments)?
         };
         let (tx, _rx) = broadcast::channel(documents.len());
-        debug!("broadcast channel with capacity: {} created", documents.len());
+        debug!(
+            "broadcast channel with capacity: {} created",
+            documents.len()
+        );
 
         Ok(FileOnceLoader {
             tx,
@@ -84,15 +90,24 @@ impl Loader for FileOnceLoader {
     async fn subscribe(&self) -> broadcast::Receiver<Document> {
         let receiver = self.tx.subscribe();
         let mut sent_docs_count = 0;
-        if !self.sent.load(Ordering::Acquire) &&
-            self.sent.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok() {
-                for doc in &self.documents {
-                    if let Err(e) = self.tx.send(doc.clone()) {
-                        error!("Loader failed to send document: {} to subscribers", e.0.id);
-                    } else {sent_docs_count += 1}
+        if !self.sent.load(Ordering::Acquire)
+            && self
+                .sent
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+        {
+            for doc in &self.documents {
+                if let Err(e) = self.tx.send(doc.clone()) {
+                    error!("Loader failed to send document: {} to subscribers", e.0.id);
+                } else {
+                    sent_docs_count += 1
                 }
-                info!("Loader sent {} of {} documents to subscribers",
-                    self.documents.len(), sent_docs_count);
+            }
+            info!(
+                "Loader sent {} of {} documents to subscribers",
+                self.documents.len(),
+                sent_docs_count
+            );
         }
         receiver
     }
@@ -112,13 +127,32 @@ mod tests {
         }
     }
 
-    fn init_tracing(){
+    fn init_tracing() {
         tracing_subscriber::fmt().init();
     }
 
     #[tokio::test]
     async fn test_invalid_glob_patterns() {
-        let invalid_patterns = vec![ "*", "?", "[", "]", "{", "}", "!", "*.*", "*.txt*", "*.txt?", "*.txt[a-z]", "*.txt{a,b}", "*.txt!", "*.txt,*.pdf", "*.txt *.pdf"].iter().map(|p| p.to_string()).collect::<Vec<String>>();
+        let invalid_patterns = vec![
+            "*",
+            "?",
+            "[",
+            "]",
+            "{",
+            "}",
+            "!",
+            "*.*",
+            "*.txt*",
+            "*.txt?",
+            "*.txt[a-z]",
+            "*.txt{a,b}",
+            "*.txt!",
+            "*.txt,*.pdf",
+            "*.txt *.pdf",
+        ]
+        .iter()
+        .map(|p| p.to_string())
+        .collect::<Vec<String>>();
         let result = FileOnceLoaderBuilder::new(invalid_patterns);
         assert!(result.is_err());
     }
@@ -153,7 +187,10 @@ mod tests {
         create_test_files(dir.path(), &["t1.txt", "t2.txt", "img.jpg"]).await;
 
         let glob_path = dir.path().join("*.txt").to_str().unwrap().to_string();
-        let loader = FileOnceLoaderBuilder::new(vec![glob_path]).unwrap().build().unwrap();
+        let loader = FileOnceLoaderBuilder::new(vec![glob_path])
+            .unwrap()
+            .build()
+            .unwrap();
 
         let mut receiver = loader.subscribe().await;
         let mut received = Vec::new();
@@ -169,7 +206,7 @@ mod tests {
         init_tracing();
         let dir = tempdir().unwrap();
         let glob_path = dir.path().join("*.md").to_str().unwrap().to_string();
-        
+
         let loader = FileOnceLoaderBuilder::new(vec![glob_path]).unwrap().build();
         assert!(loader.is_err());
     }

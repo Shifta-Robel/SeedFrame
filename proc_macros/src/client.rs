@@ -213,9 +213,8 @@ fn generate_builder(
     match provider_type {
         BuiltInProviderType::OpenAICompletionModel => {
             let model = config.model.as_ref().unwrap().to_string();
-            let api_key = "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".to_string();
             let completion_model_init = quote! {
-                ::seedframe::providers::completions::openai::OpenAICompletionModel::new(#api_key.to_string(), "https://api.openai.com/v1/chat/completions".to_string(), #model.to_string())
+                ::seedframe::providers::completions::openai::OpenAICompletionModel::new(std::env::var("SEEDFRAME_OPENAI_API_KEY").unwrap().to_string(), "https://api.openai.com/v1/chat/completions".to_string(), #model.to_string())
             };
             quote! {
                 #vis async fn build(preamble: String) -> seedframe::completion::Client<::seedframe::providers::completions::openai::OpenAICompletionModel> {

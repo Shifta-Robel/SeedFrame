@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use schemars::{schema_for, JsonSchema};
+use schemars::{gen::SchemaSettings, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -108,8 +108,7 @@ impl ToolSet {
         let v = tool
             .call(args)
             .await
-            .map_err(|e| ToolSetError::from(e))
-            .unwrap();
+            .map_err(|e| ToolSetError::from(e))?;
         Ok(ToolResponse {
             id: id.to_owned(),
             name: name.to_owned(),
@@ -127,7 +126,11 @@ pub struct ToolArg {
 
 impl ToolArg {
     pub fn new<T: JsonSchema + Serialize>(name: &str, description: &str) -> Self {
-        let schema = schema_for!(T);
+        let settings = SchemaSettings::default().with(|s| {
+            s.inline_subschemas = true;
+        });
+        let generator = settings.into_generator();
+        let schema = generator.into_root_schema_for::<T>();
         let mut schema_value = serde_json::to_value(&schema).unwrap();
 
         if let Some(obj) = schema_value.as_object_mut() {
@@ -136,12 +139,43 @@ impl ToolArg {
             obj.remove("title");
             obj.insert("description".to_string(), json!(description));
         }
+        process_json_value(&mut schema_value);
 
         ToolArg {
             name: name.to_string(),
             description: description.to_string(),
             schema: schema_value,
         }
+    }
+}
+
+fn process_json_value(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(obj) => {
+            let fields_to_remove =  ["$schema", "format", "title", "minimum"];
+            fields_to_remove.iter().for_each(|&f| {
+                if obj.get(f).map_or(false, |v| v.is_string() || v.is_number()) {
+                    obj.remove(f);
+                }
+            });
+            if let Some(v) = obj.get("oneOf").cloned() {
+                obj.remove("oneOf");
+                obj.insert("anyOf".to_string(), v);
+            };
+
+            if obj.contains_key("properties") {
+                obj.insert("additionalProperties".to_string(), json!(false));
+            }
+            for (_, v) in obj.iter_mut() {
+                process_json_value(v);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for elem in arr.iter_mut() {
+                process_json_value(elem);
+            }
+        }
+        _ => {}
     }
 }
 

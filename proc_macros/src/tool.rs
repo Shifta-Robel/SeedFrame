@@ -107,11 +107,15 @@ pub(crate) fn tool_impl(
     let description = doc_extracted
         .0
         .ok_or(ToolMacroError::DescriptionForFnNotFound(tool_name.clone()))?;
-    // let args = doc_extracted.1;
 
     let m = Punct::new('#', Spacing::Joint);
     let tool_struct_name = format_ident!("__SF_TOOL_{}__", tool_name);
     let (args, param_struct, params) = get_tool_arg_token_streams(&arg_name_type_desc)?;
+    let fn_call = if input.sig.asyncness.is_some()  {
+        quote! { #fn_ident(#params).await }
+    }else {
+        quote! { #fn_ident(#params)}
+    };
     Ok(quote! {
         #input
         struct #tool_struct_name {
@@ -133,7 +137,7 @@ pub(crate) fn tool_impl(
                 let mut args= args.as_str();
                 args = &args[1..args.len() - 1];
                 let params: Params = serde_json::from_str(args)?;
-                Ok(serde_json::Value::from(#fn_ident(#params)))
+                Ok(serde_json::to_value(#fn_call)?)
             }
             }
     })
@@ -191,34 +195,6 @@ fn validate_fn_type_bounds(input: &syn::ItemFn) -> Result<(), darling::Error> {
         }
     }
 
-    let return_type = match &input.sig.output {
-        syn::ReturnType::Type(_, ty) => &**ty,
-        syn::ReturnType::Default => &syn::parse_quote!(()),
-    };
-
-    let mut trait_checks = Vec::new();
-
-    for ty in &arg_types {
-        trait_checks.push(quote! {
-            const _: fn() = || {
-                fn assert_deserialize<T: serde::de::DeserializeOwned>() {}
-                assert_deserialize::<#ty>();
-            };
-        });
-    }
-
-    trait_checks.push(quote! {
-        const _: fn() = || {
-            fn assert_serialize<T: serde::Serialize>() {}
-            assert_serialize::<#return_type>();
-        };
-    });
-
-    let expanded = quote! {
-        #input
-
-        #(#trait_checks)*
-    };
     Ok(())
 }
 

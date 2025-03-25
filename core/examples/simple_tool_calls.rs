@@ -21,12 +21,15 @@ fn capitalize(input: String) -> String {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), CompletionError> {
+async fn main() -> Result<(), seedframe::error::Error> {
     let mut client = SimpleClient::build(
         "You are a helpful assistant".to_string(),
     ).await;
     
-    client.prompt("Say hello to Rob who's feeling excited").append_tool_response(true).send().await?;
+    client.prompt("Say hello to Rob who's feeling excited")
+        .append_tool_response(true)
+        .send().await?;
+
     dbg!(client.export_history());
     Ok(())
 }

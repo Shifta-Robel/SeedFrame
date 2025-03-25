@@ -76,7 +76,7 @@ async fn convert_temperature(value: f64, from: TemperatureScale, to: Temperature
 }
 
 #[tokio::main]
-async fn main() -> Result<(), CompletionError> {
+async fn main() -> Result<(), seedframe::error::Error> {
     let mut client = AdvancedClient::build(
         "You are an enterprise assistant".to_string(),
     ).await;

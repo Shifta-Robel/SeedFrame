@@ -6,3 +6,4 @@ pub mod prelude;
 pub mod providers;
 pub mod tools;
 pub mod vector_store;
+pub mod error;

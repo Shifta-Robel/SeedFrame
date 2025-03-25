@@ -42,12 +42,6 @@ pub enum CompletionError {
     FailedContextFetch(VectorStoreError),
 }
 
-impl From<VectorStoreError> for CompletionError {
-    fn from(value: VectorStoreError) -> Self {
-        Self::FailedContextFetch(value)
-    }
-}
-
 const DEFAULT_TOP_N: usize = 1;
 
 #[async_trait]
@@ -124,7 +118,7 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
     }
 
     /// Sends the prompt to the LLM
-    pub async fn send(self) -> Result<Message, CompletionError> {
+    pub async fn send(self) -> Result<Message, crate::error::Error> {
         let tools = if self.no_tools {
             &Box::new(ToolSet(vec![], ExecutionStrategy::BestEffort))
         }else {
@@ -161,7 +155,7 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
 
         if self.execute_tools {
             if let Message::Assistant { content: _, tool_calls: Some(calls) } = response {
-                let values = self.client.run_tools(Some(&calls)).await.unwrap();
+                let values = self.client.run_tools(Some(&calls)).await?;
                 response = Message::User {
                     content: "".to_owned(),
                     tool_responses: Some(values.clone()),
@@ -279,7 +273,7 @@ impl<M: CompletionModel> Client<M> {
         tools: &ToolSet,
         temperature: f64,
         max_tokens: usize,
-    ) -> Result<(Message, TokenUsage), CompletionError> {
+    ) -> Result<(Message, TokenUsage), crate::error::Error> {
         let context = self.get_context(prompt).await?;
         let message_with_context = Message::User {
             content: format!("{prompt}\n\n<context>\n{context}\n</context>\n"),
@@ -293,10 +287,10 @@ impl<M: CompletionModel> Client<M> {
                 temperature,
                 max_tokens,
             )
-            .await
+            .await.map_err(|e| crate::error::Error::from(e))
     }
 
-    async fn get_context(&self, prompt: &str) -> Result<String, CompletionError> {
+    async fn get_context(&self, prompt: &str) -> Result<String, VectorStoreError> {
         let mut context = String::new();
         for embedder in self.embedders.iter() {
             let query_results = embedder.query(prompt, DEFAULT_TOP_N).await?;

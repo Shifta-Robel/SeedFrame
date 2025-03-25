@@ -81,15 +81,13 @@ async fn main() -> Result<(), CompletionError> {
         "You are an enterprise assistant".to_string(),
     ).await;
 
-    let _ = client.prompt(
+    dbg!( client.prompt(
         "Schedule a 90-minute technical review with alice@co.com and bob@co.com"
-    ).await?;
-    let _ = dbg!(client.run_tools(None).await.unwrap());
+    ).send().await?);
 
-    let _ = client.prompt(
+    dbg!(client.prompt(
         "convert the temperature 32.2 from Celcius to Fahrenheit"
-    ).await?;
-    let _ = dbg!(client.run_tools(None).await.unwrap());
+    ).send().await?);
 
     Ok(())
 }

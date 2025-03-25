@@ -76,6 +76,107 @@ pub struct Client<M: CompletionModel> {
     token_usage: TokenUsage,
 }
 
+pub struct PromptBuilder<'a, M: CompletionModel> {
+    prompt: String,
+    client: &'a mut Client<M>,
+    execute_tools: bool,
+    no_tools: bool,
+    append_tool_response: bool,
+    one_shot: (bool, Option<MessageHistory>),
+}
+
+impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
+    fn new(client:&'a mut Client<M>, prompt: impl Into<String>) -> Self {
+        Self {
+            prompt: prompt.into(),
+            client,
+            execute_tools: true,
+            no_tools: false,
+            append_tool_response: false,
+            one_shot: (false, None)
+        }
+    }
+
+    /// Execute the tool calls if the LLM responds with a Tool call request, `true` by default
+    pub fn execute_tools(mut self, execute: bool) -> Self {
+        self.execute_tools = execute;
+        self
+    }
+
+    /// Don't send tool definitions with the prompt, `false` by default
+    pub fn no_tools(mut self, no_tools: bool) -> Self {
+        self.no_tools = no_tools;
+        self
+    }
+
+    /// Create a `Message::User` with the tool reponses and append it to the client history, `false` by default
+    pub fn append_tool_response(mut self, append: bool) -> Self {
+        self.append_tool_response = append;
+        self
+    }
+
+
+    /// Prompt the LLM with a custom history, and get a response.
+    /// Response won't be stored in the client's history
+    pub fn one_shot(mut self, one_shot: bool, history: Option<MessageHistory>) -> Self {
+        self.one_shot = (one_shot, history);
+        self
+    }
+
+    /// Sends the prompt to the LLM
+    pub async fn send(self) -> Result<Message, CompletionError> {
+        let tools = if self.no_tools {
+            &Box::new(ToolSet(vec![], ExecutionStrategy::BestEffort))
+        }else {
+            &self.client.tools
+        };
+        let history = if self.one_shot.0 {
+            &self.one_shot.1.unwrap_or(vec![])
+        }else {
+            &self.client.history
+        };
+        let (mut response, token_usage) = self.client
+            .send_prompt(
+                &self.prompt,
+                history,
+                tools,
+                self.client.temperature,
+                self.client.max_tokens,
+            )
+            .await?;
+
+        self.client.history.push(Message::User {
+            content: self.prompt.clone(),
+            tool_responses: None,
+        });
+        self.client.history.push(response.clone());
+
+        self.client.update_token_usage(&token_usage);
+        if token_usage.total_tokens.is_some() {
+            info!(
+                "Prompt used up: {:?} tokens, Total tokens used: {:?}",
+                token_usage.total_tokens, self.client.token_usage.total_tokens
+            );
+        }
+
+        if self.execute_tools {
+            if let Message::Assistant { content: _, tool_calls: Some(calls) } = response {
+                let values = self.client.run_tools(Some(&calls)).await.unwrap();
+                response = Message::User {
+                    content: "".to_owned(),
+                    tool_responses: Some(values.clone()),
+                }
+            }
+        }
+
+        if self.append_tool_response {
+            self.client.append_history(&[response.clone()]);
+        }
+
+        Ok(response)
+    }
+}
+
 impl<M: CompletionModel> Client<M> {
     pub fn new(
         completion_model: M,
@@ -113,83 +214,12 @@ impl<M: CompletionModel> Client<M> {
         messages.iter().for_each(|m| self.history.push(m.clone()));
     }
 
-    /// Prompt the LLM and get a response.
-    /// The response will be stored in the client's history
-    pub async fn prompt(&mut self, prompt: &str) -> Result<Message, CompletionError> {
-        let (response, token_usage) = self
-            .send_prompt(
-                prompt,
-                &self.history,
-                &self.tools,
-                self.temperature,
-                self.max_tokens,
-            )
-            .await?;
-
-        self.history.push(Message::User {
-            content: prompt.to_string(),
-            tool_responses: None,
-        });
-        self.history.push(response.clone());
-        self.update_token_usage(&token_usage);
-        if token_usage.total_tokens.is_some() {
-            info!(
-                "Prompt used up: {:?} tokens, Total tokens used: {:?}",
-                token_usage.total_tokens, self.token_usage.total_tokens
-            );
-        }
-
-        Ok(response)
-    }
-
-    /// Prompt the LLM with a custom history, and get a response.
-    /// Response won't be stored in the client's history
-    pub async fn one_shot(
-        &mut self,
-        prompt: &str,
-        history: Option<MessageHistory>,
-    ) -> Result<Message, CompletionError> {
-        let (response, token_usage) = self
-            .send_prompt(
-                prompt,
-                &history.unwrap_or(self.history.clone()),
-                &self.tools,
-                self.temperature,
-                self.max_tokens,
-            )
-            .await?;
-
-        self.update_token_usage(&token_usage);
-        if token_usage.total_tokens.is_some() {
-            info!(
-                "Prompt used up: {:?} tokens, Total tokens used: {:?}",
-                token_usage.total_tokens, self.token_usage.total_tokens
-            );
-        }
-
-        Ok(response)
+    /// Creates a `PromptBuilder` instance .
+    pub fn prompt(&mut self, prompt: impl Into<String>) -> PromptBuilder<M> {
+        PromptBuilder::new(self, prompt)
     }
 
     pub async fn run_tools(
-        &self,
-        calls: Option<&[ToolCall]>,
-    ) -> Result<Vec<ToolResponse>, ToolSetError> {
-        self.run_tools_inner(calls).await
-    }
-
-    pub async fn run_and_append(
-        &mut self,
-        calls: Option<&[ToolCall]>,
-    ) -> Result<Vec<ToolResponse>, ToolSetError> {
-        let values = self.run_tools_inner(calls).await?;
-        self.append_history(&[Message::User {
-            content: "".to_owned(),
-            tool_responses: Some(values.clone()),
-        }]);
-        Ok(values)
-    }
-
-    async fn run_tools_inner(
         &self,
         calls: Option<&[ToolCall]>,
     ) -> Result<Vec<ToolResponse>, ToolSetError> {

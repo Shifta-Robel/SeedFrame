@@ -26,8 +26,7 @@ async fn main() -> Result<(), CompletionError> {
         "You are a helpful assistant".to_string(),
     ).await;
     
-    let _ = client.prompt("Say hello to Rob who's feeling excited").await?;
-    let _ = dbg!(client.run_tools(None).await.unwrap());
-    
+    client.prompt("Say hello to Rob who's feeling excited").append_tool_response(true).send().await?;
+    dbg!(client.export_history());
     Ok(())
 }

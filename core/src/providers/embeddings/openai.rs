@@ -1,4 +1,4 @@
-use crate::embeddings::model::{EmbeddingModel, ModelError};
+use crate::embeddings::{EmbedderError, model::EmbeddingModel};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
@@ -32,7 +32,7 @@ struct OpenAIEmbeddingData {
 
 #[async_trait]
 impl EmbeddingModel for OpenAIEmbeddingModel {
-    async fn embed(&self, data: &str) -> Result<Vec<f64>, ModelError> {
+    async fn embed(&self, data: &str) -> Result<Vec<f64>, EmbedderError> {
         let client = Client::new();
         let request_body = json!({
                 "input": data,
@@ -45,13 +45,13 @@ impl EmbeddingModel for OpenAIEmbeddingModel {
             .json(&request_body)
             .send()
             .await
-            .map_err(|e| ModelError::RequestError(e.to_string()))?;
+            .map_err(|e| EmbedderError::RequestError(e.to_string()))?;
 
         if response.status().is_success() {
             let response = response
                 .json::<OpenAIEmbeddingResponse>()
                 .await
-                .map_err(|e| ModelError::ParseError(e.to_string()))?;
+                .map_err(|e| EmbedderError::ParseError(e.to_string()))?;
 
             Ok(response
                 .data
@@ -65,7 +65,7 @@ impl EmbeddingModel for OpenAIEmbeddingModel {
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
 
-            Err(ModelError::ProviderError(error_message))
+            Err(EmbedderError::ProviderError(error_message))
         }
     }
 }

@@ -11,19 +11,17 @@ pub mod file_updating_loader;
 
 #[allow(unused)]
 pub use file_once_loader::{FileOnceLoader, FileOnceLoaderBuilder};
+use thiserror::Error;
 use tokio::sync::broadcast::error::SendError;
 
 use crate::document::Document;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum FileLoaderError {
-    InvalidGlobPattern(glob::PatternError),
+    #[error("Invalid glob-pattern")]
+    InvalidGlobPattern(#[from] glob::PatternError),
+    #[error("No matching documents found")]
     NoMatchingDocuments,
-    FailedToSendDocument(SendError<Document>),
-}
-
-impl From<glob::PatternError> for FileLoaderError {
-    fn from(value: glob::PatternError) -> Self {
-        Self::InvalidGlobPattern(value)
-    }
+    #[error("Failed to send loaded document")]
+    FailedToSendDocument(#[from] SendError<Document>),
 }

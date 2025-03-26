@@ -1,10 +1,9 @@
 use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::TokenStream;
 use quote::quote;
+use thiserror::Error;
 use std::fmt::Display;
 use syn::{parse::Parser, Meta};
-
-type DarlingError = darling::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct ClientConfig {
@@ -41,53 +40,20 @@ impl FromMeta for ToolNames {
     }
 }
 
-#[allow(unused)]
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub(crate) enum ClientMacroError {
+    #[error("Unknown completion model provider: '{0}'. valid options are openai, deepseek, xai")]
     UnknownCompletionModel(String),
-    ParseError(darling::Error),
+    #[error("Failed to parse client macro: ")]
+    ParseError(#[from] darling::Error),
+    #[error("Unsupported argument '{0}' for '{1}' client type")]
     UnsupportedArgument(String, String),
+    #[error("Missing required argument '{0}' for '{1}' client type")]
     MissingArgument(String, String),
+    #[error("Unrecognized attribute {0}")]
     UnrecognizedAttribute(String),
+    #[error("Unknown execution mode : '{0}'. valid options are fail_early or best_effort")]
     UnknownExecutionMode(String),
-}
-
-impl From<DarlingError> for ClientMacroError {
-    fn from(err: DarlingError) -> Self {
-        Self::ParseError(err)
-    }
-}
-
-impl Display for ClientMacroError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ParseError(e) => {
-                write!(f, "Failed to parse client macro: {e}")
-            }
-            Self::UnknownCompletionModel(l) => {
-                write!(
-                    f,
-                    "Unknown completion model provider: '{l}'. valid options are openai, deepseek, xai"
-                )
-            }
-            Self::UnknownExecutionMode(l) => {
-                write!(
-                    f,
-                    "Unknown execution mode : '{l}'. valid options are fail_early or best_effort"
-                )
-            }
-            Self::UnsupportedArgument(arg, client) => {
-                write!(f, "Unsupported argument '{arg}' for '{client}' client type")
-            }
-            Self::MissingArgument(arg, client) => {
-                write!(
-                    f,
-                    "Missing required argument '{arg}' for '{client}' client type"
-                )
-            }
-            ClientMacroError::UnrecognizedAttribute(s) => write!(f, "Unrecognized attribute {s}"),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

@@ -1,9 +1,8 @@
 use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
+use thiserror::Error;
 use std::fmt::Display;
-
-type DarlingError = darling::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct LoaderConfig {
@@ -16,41 +15,16 @@ struct LoaderConfig {
     interval: Option<u64>,
 }
 
-#[allow(unused)]
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub(crate) enum LoaderMacroError {
+    #[error("Unknown Loader kind: '{0}'. valid options are FileOnceLoader,FileUpdatingLoader,HttpOnceLoader")]
     UnknownLoader(String),
-    ParseError(darling::Error),
+    #[error("Failed to parse loader macro: ")]
+    ParseError(#[from] darling::Error),
+    #[error("Unsupported argument '{0}' for '{1}' loader type")]
     UnsupportedArgument(String, String),
+    #[error("Missing required argument '{0}' for '{1}' loader type")]
     MissingArgument(String, String),
-}
-
-impl From<DarlingError> for LoaderMacroError {
-    fn from(err: DarlingError) -> Self {
-        Self::ParseError(err)
-    }
-}
-
-impl Display for LoaderMacroError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ParseError(e) => {
-                write!(f, "Failed to parse loader macro: {e}")
-            }
-            Self::UnknownLoader(l) => {
-                write!(f, "Unknown Loader kind: '{l}'. valid options are FileOnceLoader, FileUpdatingLoader, HttpOnceLoader")
-            }
-            Self::UnsupportedArgument(arg, loader) => {
-                write!(f, "Unsupported argument '{arg}' for '{loader}' loader type")
-            }
-            Self::MissingArgument(arg, loader) => {
-                write!(
-                    f,
-                    "Missing required argument '{arg}' for '{loader}' loader type"
-                )
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

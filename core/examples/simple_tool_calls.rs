@@ -1,4 +1,4 @@
-use seedframe::{completion::CompletionError, prelude::*};
+use seedframe::prelude::*;
 
 #[client(provider = "openai", model = "gpt-4o-mini", tools("greet", "capitalize"))]
 struct SimpleClient;

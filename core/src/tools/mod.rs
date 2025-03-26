@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use schemars::{gen::SchemaSettings, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use thiserror::Error;
 
 #[async_trait]
 pub trait Tool: Send + Sync {
@@ -28,22 +29,12 @@ pub trait Tool: Send + Sync {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum ToolError {
-    ToolCallError(Box<dyn std::error::Error + Send + Sync>),
-    JsonError(serde_json::Error),
-}
-
-impl From<serde_json::Error> for ToolError {
-    fn from(value: serde_json::Error) -> Self {
-        Self::JsonError(value)
-    }
-}
-
-impl From<Box<dyn std::error::Error + Send + Sync>> for ToolError {
-    fn from(value: Box<dyn std::error::Error + Send + Sync>) -> Self {
-        Self::ToolCallError(value)
-    }
+    #[error("Faild to execute the call")]
+    ToolCallError(#[from] Box<dyn std::error::Error + Send + Sync>),
+    #[error("Json Error")]
+    JsonError(#[from] serde_json::Error),
 }
 
 pub enum ExecutionStrategy {
@@ -53,18 +44,16 @@ pub enum ExecutionStrategy {
 
 pub struct ToolSet(pub Vec<Box<dyn Tool>>, pub ExecutionStrategy);
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum ToolSetError {
+    #[error("Failed to find tool")]
     ToolNotFound,
+    #[error("Client message history is empty")]
     EmptyMessageHistory,
+    #[error("Last entry in client message history doesn't contain a ToolCall")]
     LastMessageNotAToolCall,
-    ToolError(ToolError),
-}
-
-impl From<ToolError> for ToolSetError {
-    fn from(value: ToolError) -> Self {
-        Self::ToolError(value)
-    }
+    #[error("Tool error: ")]
+    ToolError(#[from] ToolError),
 }
 
 #[allow(unused)]

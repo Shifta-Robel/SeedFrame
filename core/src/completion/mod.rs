@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use serde::Serializer;
 use tracing::info;
+use thiserror::Error;
 
 use crate::{
     embeddings::Embedder,
@@ -34,12 +35,16 @@ pub struct TokenUsage {
 
 pub(crate) type MessageHistory = Vec<Message>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Error)]
 pub enum CompletionError {
+    #[error("Provider error: {0}")]
     ProviderError(String),
+    #[error("RequestError: {0}")]
     RequestError(String),
+    #[error("ParseError: {0}")]
     ParseError(String),
-    FailedContextFetch(VectorStoreError),
+    #[error("Vector store error")]
+    FailedContextFetch(#[from] VectorStoreError),
 }
 
 const DEFAULT_TOP_N: usize = 1;

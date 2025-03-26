@@ -6,13 +6,20 @@ use crate::{
 };
 use embedding::Embedding;
 use model::EmbeddingModel;
+use thiserror::Error;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum EmbedderError {
-    Undefined,
+    #[error("Request error: {0}")]
+    RequestError(String),
+    #[error("Response parse error: {0}")]
+    ParseError(String),
+    #[error("Provider error: {0}")]
+    ProviderError(String),
 }
+
 
 /// The `Embedder` listens to loaders, generates embeddings for incoming documents,
 /// and stores them in a vector store. It also provides functionality to query the vector store

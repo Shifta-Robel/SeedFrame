@@ -1,10 +1,8 @@
 use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::{Punct, Spacing, TokenStream};
 use quote::{format_ident, quote};
-use std::fmt::Display;
+use thiserror::Error;
 use syn::Type;
-
-type DarlingError = darling::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct ToolConfig {
@@ -12,33 +10,14 @@ struct ToolConfig {
     rename: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub(crate) enum ToolMacroError {
+    #[error("fn argument '{0}' needs to be documented")]
     UndocumentedArg(String),
+    #[error("Description for tool '{0}' not given")]
     DescriptionForFnNotFound(String),
-    ParseError(darling::Error),
-}
-
-impl From<DarlingError> for ToolMacroError {
-    fn from(err: DarlingError) -> Self {
-        Self::ParseError(err)
-    }
-}
-
-impl Display for ToolMacroError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ParseError(e) => {
-                write!(f, "Failed to parse tool macro: {e}")
-            }
-            Self::UndocumentedArg(arg) => {
-                write!(f, "fn argument {arg} needs to be documented")
-            }
-            Self::DescriptionForFnNotFound(tool_name) => {
-                write!(f, "Description for tool {tool_name} not given")
-            }
-        }
-    }
+    #[error("Failed to parse tool macro: ")]
+    ParseError(#[from] darling::Error),
 }
 
 pub(crate) fn tool_impl(

@@ -1,9 +1,8 @@
 use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::TokenStream;
 use quote::quote;
+use thiserror::Error;
 use std::fmt::Display;
-
-type DarlingError = darling::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct VectorStoreConfig {
@@ -18,47 +17,16 @@ struct VectorStoreConfig {
     source_tag: Option<String>,
 }
 
-#[allow(unused)]
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub(crate) enum VectorStoreMacroError {
+    #[error("Unknown VectorStore kind: '{0}'. valid options are InMemoryVectorStore")]
     UnknownVectorStore(String),
-    ParseError(darling::Error),
+    #[error("Failed to parse vector_store macro: ")]
+    ParseError(#[from] darling::Error),
+    #[error("Unsupported argument '{0}' for '{1}' vector store type")]
     UnsupportedArgument(String, String),
+    #[error("Missing required argument '{0}' for '{1}' vector_store type")]
     MissingArgument(String, String),
-}
-
-impl From<DarlingError> for VectorStoreMacroError {
-    fn from(err: DarlingError) -> Self {
-        Self::ParseError(err)
-    }
-}
-
-impl Display for VectorStoreMacroError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ParseError(e) => {
-                write!(f, "Failed to parse vector_store macro: {e}")
-            }
-            Self::UnknownVectorStore(l) => {
-                write!(
-                    f,
-                    "Unknown VectorStore kind: '{l}'. valid options are InMemoryVectorStore"
-                )
-            }
-            Self::UnsupportedArgument(arg, vector_store) => {
-                write!(
-                    f,
-                    "Unsupported argument '{arg}' for '{vector_store}' vector store type"
-                )
-            }
-            Self::MissingArgument(arg, vector_store) => {
-                write!(
-                    f,
-                    "Missing required argument '{arg}' for '{vector_store}' vector_store type"
-                )
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone)]

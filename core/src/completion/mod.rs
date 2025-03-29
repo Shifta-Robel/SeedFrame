@@ -1,4 +1,8 @@
+use std::sync::Arc;
+use serde_json::json;
+use tokio::sync::Mutex;
 use async_trait::async_trait;
+use schemars::gen::SchemaSettings;
 use serde::Serializer;
 use tracing::info;
 use thiserror::Error;
@@ -37,33 +41,56 @@ pub(crate) type MessageHistory = Vec<Message>;
 
 #[derive(Debug, Clone, Error)]
 pub enum CompletionError {
-    #[error("Provider error: {0}")]
-    ProviderError(String),
+    #[error("Provider error -> HTTP Status {0}: {1}")]
+    ProviderError(u16, String),
     #[error("RequestError: {0}")]
     RequestError(String),
     #[error("ParseError: {0}")]
     ParseError(String),
-    #[error("Vector store error")]
+    #[error("Failed to fetch context: ")]
     FailedContextFetch(#[from] VectorStoreError),
+    #[error("Extractor error: ")]
+    ExtractorError(#[from] ExtractionError)
+}
+
+pub trait Extractor: schemars::JsonSchema + serde::de::DeserializeOwned {}
+
+#[derive(Debug, Clone, Error)]
+pub enum ExtractionError {
+    #[error("Model does not support extraction")]
+    ExtractionNotSupported,
 }
 
 const DEFAULT_TOP_N: usize = 1;
 
 #[async_trait]
-pub trait CompletionModel {
-    /// Send message to LLM and get a replay
+pub trait CompletionModel: Send {
+    /// Send message to LLM and get a reply
     async fn send(
-        &self,
+        &mut self,
         message: Message,
         history: &MessageHistory,
         tools: &ToolSet,
         temperature: f64,
         max_tokens: usize,
     ) -> Result<(Message, TokenUsage), CompletionError>;
+
+    #[allow(unused)]
+    /// Send message to the LLM and have the response deserialized to the type you specified
+    async fn extract<T: Extractor>(
+        &mut self,
+        message: Message,
+        history: &MessageHistory,
+        temperature: f64,
+        max_tokens: usize,
+    ) -> Result<T, CompletionError>
+    {
+        Err(CompletionError::ExtractorError(ExtractionError::ExtractionNotSupported))
+    }
 }
 
 pub struct Client<M: CompletionModel> {
-    completion_model: M,
+    completion_model: Arc<Mutex<M>>,
     history: MessageHistory,
 
     // common prompt parameters
@@ -74,14 +101,14 @@ pub struct Client<M: CompletionModel> {
     embedders: Vec<Embedder>,
     token_usage: TokenUsage,
 }
-
 pub struct PromptBuilder<'a, M: CompletionModel> {
     prompt: String,
     client: &'a mut Client<M>,
     execute_tools: bool,
-    no_tools: bool,
+    with_tools: bool,
     append_tool_response: bool,
     one_shot: (bool, Option<MessageHistory>),
+    with_context: bool,
 }
 
 impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
@@ -90,9 +117,10 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
             prompt: prompt.into(),
             client,
             execute_tools: true,
-            no_tools: false,
+            with_tools: true,
             append_tool_response: false,
-            one_shot: (false, None)
+            one_shot: (false, None),
+            with_context: true,
         }
     }
 
@@ -102,15 +130,23 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
         self
     }
 
-    /// Don't send tool definitions with the prompt, `false` by default
-    pub fn no_tools(mut self, no_tools: bool) -> Self {
-        self.no_tools = no_tools;
+    /// Wether to send any tool definitions with the prompt, `true` by default
+    pub fn with_tools(mut self, no_tools: bool) -> Self {
+        self.with_tools = no_tools;
         self
     }
 
     /// Create a `Message::User` with the tool reponses and append it to the client history, `false` by default
     pub fn append_tool_response(mut self, append: bool) -> Self {
         self.append_tool_response = append;
+        self
+    }
+
+    /// Wether to retrieve and append the context to the prompt, true by default.
+    /// If true, the client's vector store will get looked up for the top matches to the prompt and
+    /// the context will get appended to the prompt before being sent.
+    pub fn with_context(mut self, append_context: bool) -> Self {
+        self.with_context = append_context;
         self
     }
 
@@ -122,9 +158,34 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
         self
     }
 
+    pub async fn extract<T: Extractor>(self) -> Result<T, crate::error::Error>{
+        let history = if self.one_shot.0 {
+            &self.one_shot.1.unwrap_or(vec![])
+        }else {
+            &self.client.history
+        };
+
+        let retrieved_context = self.client.get_context(&self.prompt).await?;
+        let context = if self.with_context {
+            retrieved_context.map_or_else(|| String::new(), |c| format!("\n\n<context>\n{c}\n</context>\n"))
+        } else {
+            String::new()
+        };
+
+        let message = Message::User {
+            content: format!("{}{}", self.prompt, context),
+            tool_responses: None,
+        };
+
+        let model = self.client.completion_model.clone();
+        let mut guard = model.lock().await;
+
+        guard.extract::<T>(message, history, self.client.temperature, self.client.max_tokens).await.map_err(Into::into)
+    }
+
     /// Sends the prompt to the LLM
     pub async fn send(self) -> Result<Message, crate::error::Error> {
-        let tools = if self.no_tools {
+        let tools = if !self.with_tools {
             &Box::new(ToolSet(vec![], ExecutionStrategy::BestEffort))
         }else {
             &self.client.tools
@@ -136,11 +197,10 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
         };
         let (mut response, token_usage) = self.client
             .send_prompt(
-                &self.prompt,
-                history,
-                tools,
+                &self.prompt, history, tools,
                 self.client.temperature,
                 self.client.max_tokens,
+                self.with_context
             )
             .await?;
 
@@ -176,7 +236,7 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
     }
 }
 
-impl<M: CompletionModel> Client<M> {
+impl<M: CompletionModel + Send> Client<M> {
     pub fn new(
         completion_model: M,
         preamble: String,
@@ -186,7 +246,7 @@ impl<M: CompletionModel> Client<M> {
         tools: ToolSet,
     ) -> Self {
         Self {
-            completion_model,
+            completion_model: Arc::new(Mutex::new(completion_model)),
             history: vec![Message::Preamble(preamble)],
             embedders,
             tools: Box::new(tools),
@@ -278,14 +338,23 @@ impl<M: CompletionModel> Client<M> {
         tools: &ToolSet,
         temperature: f64,
         max_tokens: usize,
+        append_context: bool,
     ) -> Result<(Message, TokenUsage), crate::error::Error> {
-        let context = self.get_context(prompt).await?;
+        let retrieved_context = self.get_context(prompt).await?;
+        let context = if append_context {
+            retrieved_context.map_or_else(|| String::new(), |c| format!("\n\n<context>\n{c}\n</context>\n"))
+        } else {
+            String::new()
+        };
+
         let message_with_context = Message::User {
-            content: format!("{prompt}\n\n<context>\n{context}\n</context>\n"),
+            content: format!("{}{}", prompt, context),
             tool_responses: None,
         };
-        self.completion_model
-            .send(
+
+        let model = self.completion_model.clone();
+        let mut guard = model.lock().await;
+        guard.send(
                 message_with_context,
                 history,
                 tools,
@@ -295,18 +364,78 @@ impl<M: CompletionModel> Client<M> {
             .await.map_err(|e| crate::error::Error::from(e))
     }
 
-    async fn get_context(&self, prompt: &str) -> Result<String, VectorStoreError> {
+    async fn get_context(&self, prompt: &str) -> Result<Option<String>, VectorStoreError> {
+        if self.embedders.is_empty() {
+            return Ok(None);
+        }
         let mut context = String::new();
         for embedder in self.embedders.iter() {
             let query_results = embedder.query(prompt, DEFAULT_TOP_N).await?;
+            if query_results.is_empty() {return Ok(None);}
             for r in query_results {
                 context.push_str(&r.raw_data);
             }
         }
-        Ok(context)
+        Ok(Some(context))
     }
 }
 
+pub fn default_extractor_serializer<'a, T:  schemars::JsonSchema + serde::Deserialize<'a>>() -> Result<serde_json::Value, serde_json::error::Error> {
+        let settings = SchemaSettings::default().with(|s| {
+            s.inline_subschemas = true;
+        });
+        let generator = settings.into_generator();
+        let schema = generator.into_root_schema_for::<T>();
+        let mut schema_value = serde_json::to_value(&schema)?;
+
+        let type_name: &str = std::any::type_name::<T>().into();
+        let type_name = type_name.split("::").last().unwrap_or("ExtractorType");
+        if let Some(obj) = schema_value.as_object_mut() {
+            obj.remove("$schema");
+            obj.remove("format");
+            obj.remove("title");
+        }
+        process_json_value(&mut schema_value);
+        let schema = json!({
+            "name": type_name,
+            "strict": true,
+            "schema": schema_value
+        });
+        Ok(json!({
+            "type": "json_schema",
+            "json_schema": schema
+        }))
+}
+
+fn process_json_value(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(obj) => {
+            let fields_to_remove =  ["$schema", "format", "title", "minimum"];
+            fields_to_remove.iter().for_each(|&f| {
+                if obj.get(f).map_or(false, |v| v.is_string() || v.is_number()) {
+                    obj.remove(f);
+                }
+            });
+            if let Some(v) = obj.get("oneOf").cloned() {
+                obj.remove("oneOf");
+                obj.insert("anyOf".to_string(), v);
+            };
+
+            if obj.contains_key("properties") {
+                obj.insert("additionalProperties".to_string(), json!(false));
+            }
+            for (_, v) in obj.iter_mut() {
+                process_json_value(v);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for elem in arr.iter_mut() {
+                process_json_value(elem);
+            }
+        }
+        _ => {}
+    }
+}
 pub fn serialize_user<S>(
     content: &str,
     _tool_calls: &Option<Vec<ToolResponse>>,

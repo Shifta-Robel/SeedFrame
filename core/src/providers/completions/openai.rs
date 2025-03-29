@@ -1,6 +1,5 @@
 use crate::completion::{
-    serialize_assistant, serialize_user, CompletionError, CompletionModel, Message, MessageHistory,
-    TokenUsage,
+    default_extractor_serializer, serialize_assistant, serialize_user, CompletionError, CompletionModel, Extractor, Message, MessageHistory, TokenUsage
 };
 use crate::tools::{ToolCall, ToolResponse, ToolSet};
 use async_trait::async_trait;
@@ -67,7 +66,7 @@ impl From<Message> for OpenAIMessage {
 #[async_trait]
 impl CompletionModel for OpenAICompletionModel {
     async fn send(
-        &self,
+        &mut self,
         message: Message,
         history: &MessageHistory,
         tools: &ToolSet,
@@ -84,6 +83,7 @@ impl CompletionModel for OpenAICompletionModel {
         let tools_serialized: Vec<serde_json::Value> =
             tools.0.iter().map(|t| t.default_serializer()).collect();
         let request_body = json!({
+            "store": true,
             "model": self.model,
             "messages": messages,
             "tools": tools_serialized,
@@ -166,13 +166,76 @@ impl CompletionModel for OpenAICompletionModel {
                 token_usage,
             ))
         } else {
-            let error_message = response
+            let status = response.status();
+            let error_msg = response
                 .text()
                 .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-
-            Err(CompletionError::ProviderError(error_message))
+                .unwrap_or_else(|_| "Unknown error (failed to read response body)".to_string());
+            
+            Err(CompletionError::ProviderError(status.into(), error_msg))?
         }
+    }
+
+    async fn extract<T: Extractor>(
+        &mut self,
+        message: Message,
+        history: &MessageHistory,
+        temperature: f64,
+        max_tokens: usize,
+    ) -> Result<T, CompletionError>
+    {
+        let mut messages = history.clone();
+        messages.push(message);
+        let messages: Vec<_> = messages
+            .into_iter()
+            .map(Into::<OpenAIMessage>::into)
+            .collect();
+        
+        let extractor = default_extractor_serializer::<T>()
+            .map_err(|e| CompletionError::ParseError(format!("Failed to serialize extrator: {e}")))?;
+
+        let request_body = json!({
+            "store": true,
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "response_format": extractor,
+        });
+
+        let response = self
+            .client
+            .post(&self.api_url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| CompletionError::RequestError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_msg = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error (failed to read response body)".to_string());
+            
+            return Err(CompletionError::ProviderError(status.into(), error_msg));
+        }
+
+        let response_json: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| CompletionError::ParseError(e.to_string()))?;
+
+        let extracted_str = response_json["choices"][0]["message"]["content"]
+            .as_str()
+            .ok_or_else(|| CompletionError::ParseError("Missing content".to_string()))?;
+
+        let extracted: T = serde_json::from_str(extracted_str)
+            .map_err(|e| CompletionError::ParseError(e.to_string()))?;
+
+        Ok(extracted)
     }
 }
 
@@ -193,7 +256,7 @@ mod tests {
         let api_url = "https://api.openai.com/v1/chat/completions".to_string();
         let model = "gpt-4o-mini".to_string();
 
-        let openai_completion_model = OpenAICompletionModel::new(api_key, api_url, model);
+        let mut openai_completion_model = OpenAICompletionModel::new(api_key, api_url, model);
 
         let response = openai_completion_model
             .send(

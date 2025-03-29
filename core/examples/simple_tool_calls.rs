@@ -8,8 +8,8 @@ struct SimpleClient;
 /// * `name`: The name of the person to greet
 /// * `mood`: The current mood of the person (happy/tired/excited)
 #[tool]
-fn greet(name: String, mood: String) -> String {
-    format!("Hello {name}! I see you're feeling {mood}.")
+fn greet(name: String, mood: String) {
+    println!("Hello {name}! I see you're feeling {mood}.");
 }
 
 /// Capitalizes all words in a string
@@ -30,6 +30,5 @@ async fn main() -> Result<(), seedframe::error::Error> {
         .append_tool_response(true)
         .send().await?;
 
-    dbg!(client.export_history());
     Ok(())
 }

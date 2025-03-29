@@ -68,7 +68,7 @@ impl From<Message> for XaiMessage {
 #[async_trait]
 impl CompletionModel for XaiCompletionModel {
     async fn send(
-        &self,
+        &mut self,
         message: Message,
         history: &MessageHistory,
         tools: &ToolSet,
@@ -158,12 +158,13 @@ impl CompletionModel for XaiCompletionModel {
                 token_usage,
             ))
         } else {
-            let error_message = response
+            let status = response.status();
+            let error_msg = response
                 .text()
                 .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-
-            Err(CompletionError::ProviderError(error_message))
+                .unwrap_or_else(|_| "Unknown error (failed to read response body)".to_string());
+            
+            Err(CompletionError::ProviderError(status.into(), error_msg))?
         }
     }
 }
@@ -181,7 +182,7 @@ mod tests {
         let api_url = "https://api.x.ai/v1/chat/completions".to_string();
         let model = "grok-2-latest".to_string();
 
-        let xai_completion_model = XaiCompletionModel::new(api_key, api_url, model);
+        let mut xai_completion_model = XaiCompletionModel::new(api_key, api_url, model);
 
         let response = xai_completion_model
             .send(

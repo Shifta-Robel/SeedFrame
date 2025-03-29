@@ -1,6 +1,6 @@
 use std::fmt::Display;
 use schemars::JsonSchema;
-use seedframe::{completion::CompletionError, prelude::*};
+use seedframe::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[client(provider = "openai", model = "gpt-4o-mini", tools("schedule_meeting", "convert_temperature"))]
@@ -81,13 +81,17 @@ async fn main() -> Result<(), seedframe::error::Error> {
         "You are an enterprise assistant".to_string(),
     ).await;
 
-    dbg!( client.prompt(
+    let response =  client.prompt(
         "Schedule a 90-minute technical review with alice@co.com and bob@co.com"
-    ).send().await?);
+    ).send().await?;
 
-    dbg!(client.prompt(
+    println!("Meeting scheduled: {:#?}", response);
+
+    let response = client.prompt(
         "convert the temperature 32.2 from Celcius to Fahrenheit"
-    ).send().await?);
+    ).send().await?;
+
+    println!("Temprature converted : {:#?}", response);
 
     Ok(())
 }

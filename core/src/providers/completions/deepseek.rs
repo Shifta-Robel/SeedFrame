@@ -68,7 +68,7 @@ impl From<Message> for DeepseekMessage {
 #[async_trait]
 impl CompletionModel for DeepseekCompletionModel {
     async fn send(
-        &self,
+        &mut self,
         message: Message,
         history: &MessageHistory,
         tools: &ToolSet,
@@ -161,12 +161,13 @@ impl CompletionModel for DeepseekCompletionModel {
                 token_usage,
             ))
         } else {
-            let error_message = response
+            let status = response.status();
+            let error_msg = response
                 .text()
                 .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-
-            Err(CompletionError::ProviderError(error_message))
+                .unwrap_or_else(|_| "Unknown error (failed to read response body)".to_string());
+            
+            Err(CompletionError::ProviderError(status.into(), error_msg))?
         }
     }
 }
@@ -186,7 +187,7 @@ mod tests {
         let api_url = "https://api.deepseek.com/chat/completions".to_string();
         let model = "deepseek".to_string();
 
-        let deepseek_completion_model = DeepseekCompletionModel::new(api_key, api_url, model);
+        let mut deepseek_completion_model = DeepseekCompletionModel::new(api_key, api_url, model);
 
         let response = deepseek_completion_model
             .send(

@@ -143,7 +143,7 @@ fn get_tool_arg_token_streams(
         .collect();
     let m = Punct::new('#', Spacing::Joint);
     let params_struct = quote! {
-        #m[derive(serde::Deserialize, Debug)]
+        #m[derive(serde::Deserialize)]
         struct Params {#(#a_name: #a_type,)*}
     };
     let params = quote! {#(params.#a_name),*};

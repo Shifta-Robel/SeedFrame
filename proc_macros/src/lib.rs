@@ -1,5 +1,6 @@
 use proc_macro::TokenStream;
 use proc_macro_error::{abort_call_site, proc_macro_error};
+use syn::{parse_macro_input, DeriveInput};
 
 mod client;
 mod embedder;
@@ -55,4 +56,14 @@ pub fn tool(args: TokenStream, input: TokenStream) -> TokenStream {
         abort_call_site!(e.to_string())
     }
     tk_stream.unwrap().into()
+}
+
+#[proc_macro_derive(Extractor)]
+pub fn extractor_derive(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = input.ident;
+    let expanded = quote::quote! {
+        impl seedframe::completion::Extractor for #name {}
+    };
+    TokenStream::from(expanded)
 }

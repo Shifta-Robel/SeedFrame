@@ -1,8 +1,8 @@
 use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::TokenStream;
 use quote::quote;
-use thiserror::Error;
 use std::fmt::Display;
+use thiserror::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct VectorStoreConfig {
@@ -97,10 +97,10 @@ fn validate_config(
         }
     };
 
-    _ = check_arg("host", &config.host)?;
-    _ = check_arg("namespace", &config.namespace)?;
-    _ = check_arg("env_var", &config.env_var)?;
-    _ = check_arg("source_tag", &config.source_tag)?;
+    check_arg("host", &config.host)?;
+    check_arg("namespace", &config.namespace)?;
+    check_arg("env_var", &config.env_var)?;
+    check_arg("source_tag", &config.source_tag)?;
     Ok(())
 }
 
@@ -178,7 +178,7 @@ pub(crate) fn vector_store_impl(
     validate_config(&config, &vector_store_type)?;
 
     let (struct_ident, struct_vis) = (&input.ident, &input.vis);
-    let builder_impl = generate_builder(&vector_store_type, &config, &struct_vis);
+    let builder_impl = generate_builder(&vector_store_type, &config, struct_vis);
     let kind: syn::Type =
         syn::parse_str(&vector_store_type.to_string()).expect("Failed to parse type");
 

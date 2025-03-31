@@ -1,5 +1,6 @@
 use crate::completion::{
-    default_extractor_serializer, serialize_assistant, serialize_user, CompletionError, CompletionModel, Extractor, Message, MessageHistory, TokenUsage
+    default_extractor_serializer, serialize_assistant, serialize_user, CompletionError,
+    CompletionModel, Extractor, Message, MessageHistory, TokenUsage,
 };
 use crate::tools::{ToolCall, ToolResponse, ToolSet};
 use async_trait::async_trait;
@@ -92,7 +93,10 @@ impl CompletionModel for OpenAICompletionModel {
             let tools_serialized: Vec<serde_json::Value> =
                 tools.0.iter().map(|t| t.default_serializer()).collect();
             if let Some(obj) = request_body.as_object_mut() {
-                obj.insert("tools".to_string(), serde_json::Value::Array(tools_serialized));
+                obj.insert(
+                    "tools".to_string(),
+                    serde_json::Value::Array(tools_serialized),
+                );
             }
         }
 
@@ -123,18 +127,25 @@ impl CompletionModel for OpenAICompletionModel {
                     .to_string();
             }
 
-            let tool_calls: Option<Vec<ToolCall>> = response_json["choices"][0]["message"]["tool_calls"]
-            .as_array()
-            .filter(|calls| !calls.is_empty())
-            .map(|calls| {
-                calls.iter().map(|tc| {
-                    let id = tc["id"].as_str().unwrap().to_string();
-                    let name = tc["function"]["name"].as_str().unwrap().to_string();
-                    let arguments = tc["function"]["arguments"].clone().to_string();
-                    ToolCall { id, name, arguments }
-                }).collect()
-            });
-
+            let tool_calls: Option<Vec<ToolCall>> = response_json["choices"][0]["message"]
+                ["tool_calls"]
+                .as_array()
+                .filter(|calls| !calls.is_empty())
+                .map(|calls| {
+                    calls
+                        .iter()
+                        .map(|tc| {
+                            let id = tc["id"].as_str().unwrap().to_string();
+                            let name = tc["function"]["name"].as_str().unwrap().to_string();
+                            let arguments = tc["function"]["arguments"].clone().to_string();
+                            ToolCall {
+                                id,
+                                name,
+                                arguments,
+                            }
+                        })
+                        .collect()
+                });
 
             let usage_response = &response_json["usage"];
             let usage_parse_error =
@@ -170,7 +181,7 @@ impl CompletionModel for OpenAICompletionModel {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error (failed to read response body)".to_string());
-            
+
             Err(CompletionError::ProviderError(status.into(), error_msg))?
         }
     }
@@ -181,17 +192,17 @@ impl CompletionModel for OpenAICompletionModel {
         history: &MessageHistory,
         temperature: f64,
         max_tokens: usize,
-    ) -> Result<T, CompletionError>
-    {
+    ) -> Result<T, CompletionError> {
         let mut messages = history.clone();
         messages.push(message);
         let messages: Vec<_> = messages
             .into_iter()
             .map(Into::<OpenAIMessage>::into)
             .collect();
-        
-        let extractor = default_extractor_serializer::<T>()
-            .map_err(|e| CompletionError::ParseError(format!("Failed to serialize extrator: {e}")))?;
+
+        let extractor = default_extractor_serializer::<T>().map_err(|e| {
+            CompletionError::ParseError(format!("Failed to serialize extrator: {e}"))
+        })?;
 
         let request_body = json!({
             "store": true,
@@ -218,7 +229,7 @@ impl CompletionModel for OpenAICompletionModel {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error (failed to read response body)".to_string());
-            
+
             return Err(CompletionError::ProviderError(status.into(), error_msg));
         }
 

@@ -1,9 +1,9 @@
 use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::TokenStream;
 use quote::quote;
-use thiserror::Error;
 use std::fmt::Display;
 use syn::{parse::Parser, Meta};
+use thiserror::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct ClientConfig {
@@ -28,7 +28,7 @@ impl FromMeta for ToolNames {
                     syn::punctuated::Punctuated::<syn::LitStr, syn::Token![,]>::parse_terminated;
                 let literals = parser
                     .parse(meta_list.tokens.clone().into())
-                    .map_err(|e| darling::Error::from(e))?;
+                    .map_err(darling::Error::from)?;
                 for lit in literals {
                     list.push(lit.value());
                 }
@@ -299,7 +299,7 @@ pub(crate) fn client_impl(
     validate_config(&config, &provider_type)?;
 
     let tool_execution_mode = if let Some(txm) = &config.clone().execution_mode {
-        ExecutionModeType::from_str(&txm)?
+        ExecutionModeType::from_str(txm)?
     } else {
         ExecutionModeType::FailEarly
     }

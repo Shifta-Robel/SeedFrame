@@ -1,6 +1,10 @@
 use seedframe::prelude::*;
 
-#[client(provider = "openai", model = "gpt-4o-mini", tools("greet", "capitalize"))]
+#[client(
+    provider = "openai",
+    model = "gpt-4o-mini",
+    tools("greet", "capitalize")
+)]
 struct SimpleClient;
 
 /// Greets a user with a personalized message
@@ -22,13 +26,13 @@ fn capitalize(input: String) -> String {
 
 #[tokio::main]
 async fn main() -> Result<(), seedframe::error::Error> {
-    let mut client = SimpleClient::build(
-        "You are a helpful assistant".to_string(),
-    ).await;
-    
-    client.prompt("Say hello to Rob who's feeling excited")
+    let mut client = SimpleClient::build("You are a helpful assistant".to_string()).await;
+
+    client
+        .prompt("Say hello to Rob who's feeling excited")
         .append_tool_response(true)
-        .send().await?;
+        .send()
+        .await?;
 
     dbg!(client.export_history());
     Ok(())

@@ -93,7 +93,10 @@ impl CompletionModel for DeepseekCompletionModel {
             let tools_serialized: Vec<serde_json::Value> =
                 tools.0.iter().map(|t| t.default_serializer()).collect();
             if let Some(obj) = request_body.as_object_mut() {
-                obj.insert("tools".to_string(), serde_json::Value::Array(tools_serialized));
+                obj.insert(
+                    "tools".to_string(),
+                    serde_json::Value::Array(tools_serialized),
+                );
             }
         }
 
@@ -171,7 +174,7 @@ impl CompletionModel for DeepseekCompletionModel {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error (failed to read response body)".to_string());
-            
+
             Err(CompletionError::ProviderError(status.into(), error_msg))?
         }
     }

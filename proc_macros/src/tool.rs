@@ -1,8 +1,8 @@
 use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::{Punct, Spacing, TokenStream};
 use quote::{format_ident, quote};
-use thiserror::Error;
 use syn::Type;
+use thiserror::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct ToolConfig {
@@ -90,9 +90,9 @@ pub(crate) fn tool_impl(
     let m = Punct::new('#', Spacing::Joint);
     let tool_struct_name = format_ident!("__SF_TOOL_{}__", tool_name);
     let (args, param_struct, params) = get_tool_arg_token_streams(&arg_name_type_desc)?;
-    let fn_call = if input.sig.asyncness.is_some()  {
+    let fn_call = if input.sig.asyncness.is_some() {
         quote! { #fn_ident(#params).await }
-    }else {
+    } else {
         quote! { #fn_ident(#params)}
     };
     Ok(quote! {

@@ -1,8 +1,8 @@
 use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use thiserror::Error;
 use std::fmt::Display;
+use thiserror::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct LoaderConfig {
@@ -94,9 +94,9 @@ fn validate_config(
             Ok(())
         }
     };
-    _ = check_arg("path", &config.path)?;
-    _ = check_arg("url", &config.url)?;
-    _ = check_arg("interval", &config.interval.map(|v| v.to_string()))?;
+    check_arg("path", &config.path)?;
+    check_arg("url", &config.url)?;
+    check_arg("interval", &config.interval.map(|v| v.to_string()))?;
 
     Ok(())
 }
@@ -157,7 +157,7 @@ pub(crate) fn loader_impl(
     validate_config(&config, &loader_type)?;
 
     let (struct_ident, struct_vis) = (&input.ident, &input.vis);
-    let builder_impl = generate_builder(&loader_type, &config, &struct_vis);
+    let builder_impl = generate_builder(&loader_type, &config, struct_vis);
     let kind: syn::Type = syn::parse_str(&loader_type.to_string()).expect("Failed to parse type");
 
     let static_loader_instance_ident =

@@ -90,10 +90,7 @@ impl ToolSet {
         args: &str,
     ) -> Result<ToolResponse, ToolSetError> {
         let tool = self.find_tool(name)?;
-        let v = tool
-            .call(args)
-            .await
-            .map_err(|e| ToolSetError::from(e))?;
+        let v = tool.call(args).await.map_err(ToolSetError::from)?;
         Ok(ToolResponse {
             id: id.to_owned(),
             name: name.to_owned(),
@@ -137,7 +134,7 @@ impl ToolArg {
 fn process_json_value(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::Object(obj) => {
-            let fields_to_remove =  ["$schema", "format", "title", "minimum"];
+            let fields_to_remove = ["$schema", "format", "title", "minimum"];
             fields_to_remove.iter().for_each(|&f| {
                 if obj.get(f).map_or(false, |v| v.is_string() || v.is_number()) {
                     obj.remove(f);

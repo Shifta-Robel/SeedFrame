@@ -1,4 +1,7 @@
-use crate::{completion::CompletionError, embeddings::EmbedderError, tools::ToolSetError, vector_store::VectorStoreError};
+use crate::{
+    completion::CompletionError, embeddings::EmbedderError, tools::ToolSetError,
+    vector_store::VectorStoreError,
+};
 use thiserror::Error;
 
 #[derive(Debug, Error)]

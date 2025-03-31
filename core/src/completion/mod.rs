@@ -1,11 +1,11 @@
-use std::sync::Arc;
-use serde_json::json;
-use tokio::sync::Mutex;
 use async_trait::async_trait;
 use schemars::gen::SchemaSettings;
 use serde::Serializer;
-use tracing::info;
+use serde_json::json;
+use std::sync::Arc;
 use thiserror::Error;
+use tokio::sync::Mutex;
+use tracing::info;
 
 use crate::{
     embeddings::Embedder,
@@ -50,7 +50,7 @@ pub enum CompletionError {
     #[error("Failed to fetch context: ")]
     FailedContextFetch(#[from] VectorStoreError),
     #[error("Extractor error: ")]
-    ExtractorError(#[from] ExtractionError)
+    ExtractorError(#[from] ExtractionError),
 }
 
 pub trait Extractor: schemars::JsonSchema + serde::de::DeserializeOwned {}
@@ -83,9 +83,10 @@ pub trait CompletionModel: Send {
         history: &MessageHistory,
         temperature: f64,
         max_tokens: usize,
-    ) -> Result<T, CompletionError>
-    {
-        Err(CompletionError::ExtractorError(ExtractionError::ExtractionNotSupported))
+    ) -> Result<T, CompletionError> {
+        Err(CompletionError::ExtractorError(
+            ExtractionError::ExtractionNotSupported,
+        ))
     }
 }
 
@@ -112,7 +113,7 @@ pub struct PromptBuilder<'a, M: CompletionModel> {
 }
 
 impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
-    fn new(client:&'a mut Client<M>, prompt: impl Into<String>) -> Self {
+    fn new(client: &'a mut Client<M>, prompt: impl Into<String>) -> Self {
         Self {
             prompt: prompt.into(),
             client,
@@ -150,7 +151,6 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
         self
     }
 
-
     /// Prompt the LLM with a custom history, and get a response.
     /// Response won't be stored in the client's history
     pub fn one_shot(mut self, one_shot: bool, history: Option<MessageHistory>) -> Self {
@@ -158,16 +158,17 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
         self
     }
 
-    pub async fn extract<T: Extractor>(self) -> Result<T, crate::error::Error>{
+    pub async fn extract<T: Extractor>(self) -> Result<T, crate::error::Error> {
         let history = if self.one_shot.0 {
-            &self.one_shot.1.unwrap_or(vec![])
-        }else {
+            &self.one_shot.1.unwrap_or_default()
+        } else {
             &self.client.history
         };
 
         let retrieved_context = self.client.get_context(&self.prompt).await?;
         let context = if self.with_context {
-            retrieved_context.map_or_else(|| String::new(), |c| format!("\n\n<context>\n{c}\n</context>\n"))
+            retrieved_context
+                .map_or_else(String::new, |c| format!("\n\n<context>\n{c}\n</context>\n"))
         } else {
             String::new()
         };
@@ -180,23 +181,38 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
         let model = self.client.completion_model.clone();
         let mut guard = model.lock().await;
 
-        guard.extract::<T>(message, history, self.client.temperature, self.client.max_tokens).await.map_err(Into::into)
+        guard
+            .extract::<T>(
+                message,
+                history,
+                self.client.temperature,
+                self.client.max_tokens,
+            )
+            .await
+            .map_err(Into::into)
     }
 
     /// Sends the prompt to the LLM
     pub async fn send(self) -> Result<Message, crate::error::Error> {
-        let tools = if self.with_tools { Some(&*self.client.tools) }else { None };
+        let tools = if self.with_tools {
+            Some(&*self.client.tools)
+        } else {
+            None
+        };
         let history = if self.one_shot.0 {
-            &self.one_shot.1.unwrap_or(vec![])
-        }else {
+            &self.one_shot.1.unwrap_or_default()
+        } else {
             &self.client.history
         };
-        let (mut response, token_usage) = self.client
+        let (mut response, token_usage) = self
+            .client
             .send_prompt(
-                &self.prompt, history, tools,
+                &self.prompt,
+                history,
+                tools,
                 self.client.temperature,
                 self.client.max_tokens,
-                self.with_context
+                self.with_context,
             )
             .await?;
 
@@ -217,10 +233,18 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
         }
 
         if self.execute_tools {
-            if let Message::Assistant { content: _, tool_calls: Some(calls) } = response.clone() {
-                if self.one_shot.0 {self.client.history.push(response)}
+            if let Message::Assistant {
+                content: _,
+                tool_calls: Some(calls),
+            } = response.clone()
+            {
+                if self.one_shot.0 {
+                    self.client.history.push(response)
+                }
                 let values = self.client.run_tools(Some(&calls)).await?;
-                if self.one_shot.0 {self.client.history.pop();}
+                if self.one_shot.0 {
+                    self.client.history.pop();
+                }
                 response = Message::User {
                     content: "".to_owned(),
                     tool_responses: Some(values.clone()),
@@ -341,7 +365,8 @@ impl<M: CompletionModel + Send> Client<M> {
     ) -> Result<(Message, TokenUsage), crate::error::Error> {
         let retrieved_context = self.get_context(prompt).await?;
         let context = if append_context {
-            retrieved_context.map_or_else(|| String::new(), |c| format!("\n\n<context>\n{c}\n</context>\n"))
+            retrieved_context
+                .map_or_else(String::new, |c| format!("\n\n<context>\n{c}\n</context>\n"))
         } else {
             String::new()
         };
@@ -353,14 +378,16 @@ impl<M: CompletionModel + Send> Client<M> {
 
         let model = self.completion_model.clone();
         let mut guard = model.lock().await;
-        guard.send(
+        guard
+            .send(
                 message_with_context,
                 history,
                 tools,
                 temperature,
                 max_tokens,
             )
-            .await.map_err(|e| crate::error::Error::from(e))
+            .await
+            .map_err(crate::error::Error::from)
     }
 
     async fn get_context(&self, prompt: &str) -> Result<Option<String>, VectorStoreError> {
@@ -370,7 +397,9 @@ impl<M: CompletionModel + Send> Client<M> {
         let mut context = String::new();
         for embedder in self.embedders.iter() {
             let query_results = embedder.query(prompt, DEFAULT_TOP_N).await?;
-            if query_results.is_empty() {return Ok(None);}
+            if query_results.is_empty() {
+                return Ok(None);
+            }
             for r in query_results {
                 context.push_str(&r.raw_data);
             }
@@ -379,37 +408,38 @@ impl<M: CompletionModel + Send> Client<M> {
     }
 }
 
-pub fn default_extractor_serializer<'a, T:  schemars::JsonSchema + serde::Deserialize<'a>>() -> Result<serde_json::Value, serde_json::error::Error> {
-        let settings = SchemaSettings::default().with(|s| {
-            s.inline_subschemas = true;
-        });
-        let generator = settings.into_generator();
-        let schema = generator.into_root_schema_for::<T>();
-        let mut schema_value = serde_json::to_value(&schema)?;
+pub fn default_extractor_serializer<'a, T: schemars::JsonSchema + serde::Deserialize<'a>>(
+) -> Result<serde_json::Value, serde_json::error::Error> {
+    let settings = SchemaSettings::default().with(|s| {
+        s.inline_subschemas = true;
+    });
+    let generator = settings.into_generator();
+    let schema = generator.into_root_schema_for::<T>();
+    let mut schema_value = serde_json::to_value(&schema)?;
 
-        let type_name: &str = std::any::type_name::<T>().into();
-        let type_name = type_name.split("::").last().unwrap_or("ExtractorType");
-        if let Some(obj) = schema_value.as_object_mut() {
-            obj.remove("$schema");
-            obj.remove("format");
-            obj.remove("title");
-        }
-        process_json_value(&mut schema_value);
-        let schema = json!({
-            "name": type_name,
-            "strict": true,
-            "schema": schema_value
-        });
-        Ok(json!({
-            "type": "json_schema",
-            "json_schema": schema
-        }))
+    let type_name: &str = std::any::type_name::<T>();
+    let type_name = type_name.split("::").last().unwrap_or("ExtractorType");
+    if let Some(obj) = schema_value.as_object_mut() {
+        obj.remove("$schema");
+        obj.remove("format");
+        obj.remove("title");
+    }
+    process_json_value(&mut schema_value);
+    let schema = json!({
+        "name": type_name,
+        "strict": true,
+        "schema": schema_value
+    });
+    Ok(json!({
+        "type": "json_schema",
+        "json_schema": schema
+    }))
 }
 
 fn process_json_value(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::Object(obj) => {
-            let fields_to_remove =  ["$schema", "format", "title", "minimum"];
+            let fields_to_remove = ["$schema", "format", "title", "minimum"];
             fields_to_remove.iter().for_each(|&f| {
                 if obj.get(f).map_or(false, |v| v.is_string() || v.is_number()) {
                     obj.remove(f);

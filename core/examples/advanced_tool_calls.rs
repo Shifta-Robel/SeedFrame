@@ -1,9 +1,13 @@
-use std::fmt::Display;
 use schemars::JsonSchema;
 use seedframe::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 
-#[client(provider = "openai", model = "gpt-4o-mini", tools("schedule_meeting", "convert_temperature"))]
+#[client(
+    provider = "openai",
+    model = "gpt-4o-mini",
+    tools("schedule_meeting", "convert_temperature")
+)]
 struct AdvancedClient;
 
 /// Meeting configuration parameters
@@ -14,7 +18,7 @@ struct MeetingConfig {
     /// Type of meeting
     meeting_type: MeetingType,
     /// Participants email addresses
-    participants: Vec<String>
+    participants: Vec<String>,
 }
 
 /// Type of meeting to schedule
@@ -25,7 +29,7 @@ enum MeetingType {
     /// Detailed planning session
     Planning,
     /// Technical discussion
-    TechnicalReview
+    TechnicalReview,
 }
 
 #[tool]
@@ -33,7 +37,10 @@ enum MeetingType {
 /// # Arguments
 /// * `config`: The meeting configuration parameters
 fn schedule_meeting(config: MeetingConfig) -> String {
-    format!("Scheduled {} meeting for {} minutes", config.meeting_type, config.duration)
+    format!(
+        "Scheduled {} meeting for {} minutes",
+        config.meeting_type, config.duration
+    )
 }
 
 /// Temperature scale specification
@@ -41,7 +48,7 @@ fn schedule_meeting(config: MeetingConfig) -> String {
 enum TemperatureScale {
     Celsius,
     Fahrenheit,
-    Kelvin
+    Kelvin,
 }
 
 /// Temperature conversion result
@@ -57,7 +64,11 @@ struct ConversionResult {
 /// * `value`: The temperature value to convert
 /// * `from`: The scale to convert from
 /// * `to`: The scale to convert to
-async fn convert_temperature(value: f64, from: TemperatureScale, to: TemperatureScale) -> ConversionResult {
+async fn convert_temperature(
+    value: f64,
+    from: TemperatureScale,
+    to: TemperatureScale,
+) -> ConversionResult {
     let converted = match (from, to.clone()) {
         (TemperatureScale::Celsius, TemperatureScale::Fahrenheit) => value * 1.8 + 32.0,
         (TemperatureScale::Fahrenheit, TemperatureScale::Celsius) => (value - 32.0) / 1.8,
@@ -77,19 +88,19 @@ async fn convert_temperature(value: f64, from: TemperatureScale, to: Temperature
 
 #[tokio::main]
 async fn main() -> Result<(), seedframe::error::Error> {
-    let mut client = AdvancedClient::build(
-        "You are an enterprise assistant".to_string(),
-    ).await;
+    let mut client = AdvancedClient::build("You are an enterprise assistant".to_string()).await;
 
-    let response =  client.prompt(
-        "Schedule a 90-minute technical review with alice@co.com and bob@co.com"
-    ).send().await?;
+    let response = client
+        .prompt("Schedule a 90-minute technical review with alice@co.com and bob@co.com")
+        .send()
+        .await?;
 
     println!("Meeting scheduled: {:#?}", response);
 
-    let response = client.prompt(
-        "convert the temperature 32.2 from Celcius to Fahrenheit"
-    ).send().await?;
+    let response = client
+        .prompt("convert the temperature 32.2 from Celcius to Fahrenheit")
+        .send()
+        .await?;
 
     println!("Temprature converted : {:#?}", response);
 

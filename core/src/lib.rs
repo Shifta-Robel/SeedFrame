@@ -1,9 +1,9 @@
 pub mod completion;
 pub mod document;
 pub mod embeddings;
+pub mod error;
 pub mod loader;
 pub mod prelude;
 pub mod providers;
 pub mod tools;
 pub mod vector_store;
-pub mod error;

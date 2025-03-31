@@ -2,8 +2,8 @@ use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use quote::{format_ident, quote};
-use thiserror::Error;
 use std::fmt::Display;
+use thiserror::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct EmbedderConfig {
@@ -89,7 +89,7 @@ fn validate_config(
             Ok(())
         }
     };
-    _ = check_arg("model", &config.model)?;
+    check_arg("model", &config.model)?;
     Ok(())
 }
 fn generate_builder(
@@ -217,7 +217,7 @@ pub(crate) fn embedder_impl(
         vector_store_type,
         loader_types,
         &config,
-        &struct_vis,
+        struct_vis,
     );
 
     Ok(quote! {

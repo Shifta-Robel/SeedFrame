@@ -70,7 +70,7 @@ pub trait CompletionModel: Send {
         &mut self,
         message: Message,
         history: &MessageHistory,
-        tools: &ToolSet,
+        tools: Option<&ToolSet>,
         temperature: f64,
         max_tokens: usize,
     ) -> Result<(Message, TokenUsage), CompletionError>;
@@ -185,11 +185,7 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
 
     /// Sends the prompt to the LLM
     pub async fn send(self) -> Result<Message, crate::error::Error> {
-        let tools = if !self.with_tools {
-            &Box::new(ToolSet(vec![], ExecutionStrategy::BestEffort))
-        }else {
-            &self.client.tools
-        };
+        let tools = if self.with_tools { Some(&*self.client.tools) }else { None };
         let history = if self.one_shot.0 {
             &self.one_shot.1.unwrap_or(vec![])
         }else {
@@ -204,11 +200,13 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
             )
             .await?;
 
-        self.client.history.push(Message::User {
-            content: self.prompt.clone(),
-            tool_responses: None,
-        });
-        self.client.history.push(response.clone());
+        if !self.one_shot.0 {
+            self.client.history.push(Message::User {
+                content: self.prompt.clone(),
+                tool_responses: None,
+            });
+            self.client.history.push(response.clone());
+        }
 
         self.client.update_token_usage(&token_usage);
         if token_usage.total_tokens.is_some() {
@@ -219,17 +217,18 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
         }
 
         if self.execute_tools {
-            if let Message::Assistant { content: _, tool_calls: Some(calls) } = response {
+            if let Message::Assistant { content: _, tool_calls: Some(calls) } = response.clone() {
+                if self.one_shot.0 {self.client.history.push(response)}
                 let values = self.client.run_tools(Some(&calls)).await?;
+                if self.one_shot.0 {self.client.history.pop();}
                 response = Message::User {
                     content: "".to_owned(),
                     tool_responses: Some(values.clone()),
+                };
+                if self.append_tool_response && !self.one_shot.0 {
+                    self.client.append_history(&[response.clone()]);
                 }
             }
-        }
-
-        if self.append_tool_response {
-            self.client.append_history(&[response.clone()]);
         }
 
         Ok(response)
@@ -335,7 +334,7 @@ impl<M: CompletionModel + Send> Client<M> {
         &self,
         prompt: &str,
         history: &MessageHistory,
-        tools: &ToolSet,
+        tools: Option<&ToolSet>,
         temperature: f64,
         max_tokens: usize,
         append_context: bool,

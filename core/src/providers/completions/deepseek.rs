@@ -71,7 +71,7 @@ impl CompletionModel for DeepseekCompletionModel {
         &mut self,
         message: Message,
         history: &MessageHistory,
-        tools: &ToolSet,
+        tools: Option<&ToolSet>,
         temperature: f64,
         max_tokens: usize,
     ) -> Result<(Message, TokenUsage), CompletionError> {
@@ -82,15 +82,20 @@ impl CompletionModel for DeepseekCompletionModel {
             .map(Into::<DeepseekMessage>::into)
             .collect();
 
-        let tools_serialized: Vec<serde_json::Value> =
-            tools.0.iter().map(|t| t.default_serializer()).collect();
-        let request_body = json!({
+        let mut request_body = json!({
             "model": self.model,
             "messages": messages,
-            "tools": tools_serialized,
             "temperature": temperature,
             "max_tokens": max_tokens,
         });
+
+        if let Some(tools) = tools {
+            let tools_serialized: Vec<serde_json::Value> =
+                tools.0.iter().map(|t| t.default_serializer()).collect();
+            if let Some(obj) = request_body.as_object_mut() {
+                obj.insert("tools".to_string(), serde_json::Value::Array(tools_serialized));
+            }
+        }
 
         let response = self
             .client
@@ -174,8 +179,6 @@ impl CompletionModel for DeepseekCompletionModel {
 
 #[cfg(test)]
 mod tests {
-    use crate::tools::ExecutionStrategy;
-
     use super::*;
 
     #[tokio::test]
@@ -200,7 +203,7 @@ For this test to be considered successful, reply with "okay" without the quotes,
                     tool_responses: None,
                 },
                 &vec![],
-                &ToolSet(vec![], ExecutionStrategy::FailEarly),
+                None,
                 0.0,
                 10,
             )

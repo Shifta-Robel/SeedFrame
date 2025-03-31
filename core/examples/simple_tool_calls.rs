@@ -30,5 +30,6 @@ async fn main() -> Result<(), seedframe::error::Error> {
         .append_tool_response(true)
         .send().await?;
 
+    dbg!(client.export_history());
     Ok(())
 }

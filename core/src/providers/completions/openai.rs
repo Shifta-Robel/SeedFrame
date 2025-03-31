@@ -69,7 +69,7 @@ impl CompletionModel for OpenAICompletionModel {
         &mut self,
         message: Message,
         history: &MessageHistory,
-        tools: &ToolSet,
+        tools: Option<&ToolSet>,
         temperature: f64,
         max_tokens: usize,
     ) -> Result<(Message, TokenUsage), CompletionError> {
@@ -80,16 +80,21 @@ impl CompletionModel for OpenAICompletionModel {
             .map(Into::<OpenAIMessage>::into)
             .collect();
 
-        let tools_serialized: Vec<serde_json::Value> =
-            tools.0.iter().map(|t| t.default_serializer()).collect();
-        let request_body = json!({
+        let mut request_body = json!({
             "store": true,
             "model": self.model,
             "messages": messages,
-            "tools": tools_serialized,
             "temperature": temperature,
             "max_tokens": max_tokens,
         });
+
+        if let Some(tools) = tools {
+            let tools_serialized: Vec<serde_json::Value> =
+                tools.0.iter().map(|t| t.default_serializer()).collect();
+            if let Some(obj) = request_body.as_object_mut() {
+                obj.insert("tools".to_string(), serde_json::Value::Array(tools_serialized));
+            }
+        }
 
         let response = self
             .client
@@ -118,24 +123,18 @@ impl CompletionModel for OpenAICompletionModel {
                     .to_string();
             }
 
-            let tool_calls_json = response_json["choices"][0]["message"]["tool_calls"]
-                .as_array()
-                .unwrap();
-            let mut tool_calls: Option<Vec<ToolCall>> = if tool_calls_json.is_empty() {
-                None
-            } else {
-                Some(vec![])
-            };
-            for tc in tool_calls_json {
-                let id = tc["id"].as_str().unwrap().to_string();
-                let name = tc["function"]["name"].as_str().unwrap().to_string();
-                let arguments = tc["function"]["arguments"].clone().to_string();
-                tool_calls.as_mut().unwrap().push(ToolCall {
-                    id,
-                    name,
-                    arguments,
-                });
-            }
+            let tool_calls: Option<Vec<ToolCall>> = response_json["choices"][0]["message"]["tool_calls"]
+            .as_array()
+            .filter(|calls| !calls.is_empty())
+            .map(|calls| {
+                calls.iter().map(|tc| {
+                    let id = tc["id"].as_str().unwrap().to_string();
+                    let name = tc["function"]["name"].as_str().unwrap().to_string();
+                    let arguments = tc["function"]["arguments"].clone().to_string();
+                    ToolCall { id, name, arguments }
+                }).collect()
+            });
+
 
             let usage_response = &response_json["usage"];
             let usage_parse_error =
@@ -269,7 +268,7 @@ For this test to be considered successful, reply with "okay" without the quotes,
                     tool_responses: None,
                 },
                 &vec![],
-                &ToolSet(vec![], ExecutionStrategy::FailEarly),
+                None,
                 0.0,
                 10,
             )
@@ -300,7 +299,7 @@ For this test to be considered successful, reply with "okay" without the quotes,
         let api_url = "https://api.openai.com/v1/chat/completions".to_string();
         let model = "gpt-4o-mini".to_string();
 
-        let openai_completion_model = OpenAICompletionModel::new(api_key, api_url, model);
+        let mut openai_completion_model = OpenAICompletionModel::new(api_key, api_url, model);
         let response = openai_completion_model
             .send(
                 Message::User {
@@ -308,7 +307,7 @@ For this test to be considered successful, reply with "okay" without the quotes,
                     tool_responses: None,
                 },
                 &vec![],
-                &get_tools(),
+                Some(&get_tools()),
                 0.0,
                 1000,
             )

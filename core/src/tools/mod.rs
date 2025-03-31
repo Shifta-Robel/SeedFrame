@@ -89,11 +89,7 @@ impl ToolSet {
         name: &str,
         args: &str,
     ) -> Result<ToolResponse, ToolSetError> {
-        let tool = self
-            .0
-            .iter()
-            .find(|t| t.name() == name)
-            .ok_or(ToolSetError::ToolNotFound)?;
+        let tool = self.find_tool(name)?;
         let v = tool
             .call(args)
             .await

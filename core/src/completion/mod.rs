@@ -1,10 +1,11 @@
 use async_trait::async_trait;
+use dashmap::DashMap;
 use schemars::gen::SchemaSettings;
 use serde::Serializer;
 use serde_json::json;
-use std::sync::Arc;
+use std::{any::{Any, TypeId}, sync::Arc};
 use thiserror::Error;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::{
@@ -47,10 +48,12 @@ pub enum CompletionError {
     RequestError(String),
     #[error("ParseError: {0}")]
     ParseError(String),
-    #[error("Failed to fetch context: ")]
+    #[error("Failed to fetch context: {0}")]
     FailedContextFetch(#[from] VectorStoreError),
-    #[error("Extractor error: ")]
+    #[error(transparent)]
     ExtractorError(#[from] ExtractionError),
+    #[error(transparent)]
+    StateError(#[from] StateError)
 }
 
 pub trait Extractor: schemars::JsonSchema + serde::de::DeserializeOwned {}
@@ -61,6 +64,15 @@ pub enum ExtractionError {
     ExtractionNotSupported,
 }
 
+#[derive(Debug, Clone, Error)]
+pub enum StateError {
+    #[error("State with type {0} already exists on client")]
+    AlreadyExists(String),
+    #[error("State not found")]
+    NotFound,
+    #[error("Failed state fetch")]
+    FailedStateFetch
+}
 const DEFAULT_TOP_N: usize = 1;
 
 #[async_trait]
@@ -90,8 +102,20 @@ pub trait CompletionModel: Send {
     }
 }
 
+pub struct State<T: Send + Sync + 'static>(T);
+
+impl<T: Send + Sync + 'static> State<T> {
+    pub fn new(value: T) -> Self {
+        State(value)
+    }
+
+    pub fn inner(&self) -> &T {
+        &self.0
+    }
+}
+
 pub struct Client<M: CompletionModel> {
-    completion_model: Arc<Mutex<M>>,
+    completion_model: Arc<tokio::sync::RwLock<M>>,
     history: MessageHistory,
 
     // common prompt parameters
@@ -101,7 +125,9 @@ pub struct Client<M: CompletionModel> {
 
     embedders: Vec<Embedder>,
     token_usage: TokenUsage,
+    states: DashMap<TypeId, Arc<dyn Any + Send + Sync>>,
 }
+
 pub struct PromptBuilder<'a, M: CompletionModel> {
     prompt: String,
     client: &'a mut Client<M>,
@@ -179,7 +205,8 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
         };
 
         let model = self.client.completion_model.clone();
-        let mut guard = model.lock().await;
+        let mut guard = model.write().await;
+        // let mut guard = model.lock().await;
 
         guard
             .extract::<T>(
@@ -269,13 +296,15 @@ impl<M: CompletionModel + Send> Client<M> {
         tools: ToolSet,
     ) -> Self {
         Self {
-            completion_model: Arc::new(Mutex::new(completion_model)),
+            completion_model: Arc::new(RwLock::new(completion_model)),
+            // completion_model: Arc::new(Mutex::new(completion_model)),
             history: vec![Message::Preamble(preamble)],
             embedders,
             tools: Box::new(tools),
             temperature,
             max_tokens,
             token_usage: TokenUsage::default(),
+            states: DashMap::new()
         }
     }
 
@@ -294,6 +323,22 @@ impl<M: CompletionModel + Send> Client<M> {
 
     pub fn append_history(&mut self, messages: &[Message]) {
         messages.iter().for_each(|m| self.history.push(m.clone()));
+    }
+
+    pub fn with_state<T: Send + Sync + 'static>(self, state: T) -> Result<Self, CompletionError> {
+        let type_id = TypeId::of::<T>();
+        if self.states.contains_key(&type_id) {
+            return Err(CompletionError::StateError(StateError::AlreadyExists(format!("{type_id:?}"))));
+        }
+        self.states.insert(type_id, Arc::new(Box::new(state)));
+        Ok(self)
+    }
+
+    pub fn get_state<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, StateError> {
+        self.states
+            .get(&TypeId::of::<T>())
+            .and_then(|entry| Arc::clone(entry.value()).downcast().ok())
+            .ok_or(StateError::NotFound)
     }
 
     /// Creates a `PromptBuilder` instance .
@@ -377,7 +422,7 @@ impl<M: CompletionModel + Send> Client<M> {
         };
 
         let model = self.completion_model.clone();
-        let mut guard = model.lock().await;
+        let mut guard = model.write().await;
         guard
             .send(
                 message_with_context,

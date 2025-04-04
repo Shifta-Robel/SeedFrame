@@ -119,7 +119,7 @@ impl TryFrom<QueryResponse> for Embeddings {
         let mut embeddings: Vec<Embedding> = vec![];
         for m in value.matches {
             let mut raw_data = String::new();
-            let metadata = m.metadata.ok_or(VectorStoreError::Undefined(
+            let metadata = m.metadata.ok_or(VectorStoreError::PineconeError(
                 "Query response without raw data".to_string(),
             ))?;
             metadata

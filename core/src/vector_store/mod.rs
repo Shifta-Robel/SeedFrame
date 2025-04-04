@@ -13,13 +13,11 @@ pub use in_memory_vec_store::InMemoryVectorStore;
 
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum VectorStoreError {
-    #[error("")]
-    Undefined(String),
-    #[error("")]
+    #[error("Failed to create store: {0}")]
     FailedToCreateStore(String),
-    #[error("")]
+    #[error("Failed upsert: {0}")]
     FailedUpsert(String),
-    #[error("")]
+    #[error("Embedding not found")]
     EmbeddingNotFound,
     #[cfg(feature = "pinecone")]
     #[error("Pinecone error: {0}")]

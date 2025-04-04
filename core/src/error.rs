@@ -6,12 +6,12 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("Completion error")]
+    #[error(transparent)]
     Completion(#[from] CompletionError),
-    #[error("ToolSet error")]
+    #[error(transparent)]
     ToolSet(#[from] ToolSetError),
-    #[error("VectorStore error")]
+    #[error(transparent)]
     VectorStore(#[from] VectorStoreError),
-    #[error("Embedder error")]
+    #[error(transparent)]
     Embedder(#[from] EmbedderError),
 }

@@ -46,7 +46,6 @@ pub(crate) fn tool_impl(
     };
 
     validate_fn_type_bounds(&input)?;
-
     let fn_ident = input.clone().sig.ident;
     let docs: Vec<String> = input
         .attrs
@@ -67,11 +66,12 @@ pub(crate) fn tool_impl(
     let docs = docs.join("\n");
 
     let doc_extracted = parse_doc_comment(&docs);
+    let (regular_args, state_args) = collect_fn_arg_names(&input)?;
 
-    let arg_name_type_pairs = collect_fn_arg_names(&input)?;
-    let mut arg_name_type_desc: Vec<(String, &Type, String)> = vec![];
-    for arg in arg_name_type_pairs {
-        let arg_name = arg.0.clone();
+    let mut arg_name_type_desc = Vec::new();
+    for arg in regular_args {
+        let arg_name = arg.name.clone();
+        let arg_type = arg.ty.clone();
         let desc = doc_extracted
             .1
             .iter()
@@ -79,51 +79,80 @@ pub(crate) fn tool_impl(
             .ok_or(ToolMacroError::UndocumentedArg(arg_name))?
             .1
             .clone();
-        arg_name_type_desc.push((arg.0, arg.1, desc));
+        arg_name_type_desc.push((arg.name, arg_type, desc));
     }
+
+    let states = state_args.iter().map(|sa| {
+        let ty = &sa.ty;
+        quote!{ get_state::<#ty>(states).unwrap() }
+    });
+
+    let (args, param_struct, params) = get_tool_arg_token_streams(arg_name_type_desc.as_slice())?;
+
+    let fn_call = if input.sig.asyncness.is_some() {
+        quote! { #fn_ident(#params, #(#states),*).await }
+    } else {
+        quote! { #fn_ident(#params, #(#states),*) }
+    };
 
     let tool_name = config.rename.unwrap_or(fn_ident.to_string());
     let description = doc_extracted
         .0
         .ok_or(ToolMacroError::DescriptionForFnNotFound(tool_name.clone()))?;
-
-    let m = Punct::new('#', Spacing::Joint);
     let tool_struct_name = format_ident!("__SF_TOOL_{}__", tool_name);
-    let (args, param_struct, params) = get_tool_arg_token_streams(&arg_name_type_desc)?;
-    let fn_call = if input.sig.asyncness.is_some() {
-        quote! { #fn_ident(#params).await }
-    } else {
-        quote! { #fn_ident(#params)}
+    let m = Punct::new('#', Spacing::Joint);
+    let get_state_fn = quote!{
+        fn get_state<T: Send + Sync + 'static>(
+            states: &dashmap::DashMap<std::any::TypeId, Box<dyn std::any::Any + Send + Sync>>,
+        ) -> Result<seedframe::completion::State<T>, seedframe::completion::StateError> {
+            let boxed = states.get(&std::any::TypeId::of::<T>())
+                .ok_or(seedframe::completion::StateError::NotFound)?;
+            
+            let arc = boxed.downcast_ref::<std::sync::Arc<T>>()
+                .ok_or(seedframe::completion::StateError::NotFound)?;
+            
+            Ok(seedframe::completion::State(arc.clone()))
+        }
     };
     Ok(quote! {
         #input
+        
         struct #tool_struct_name {
-            args: Vec<seedframe::tools::ToolArg>
+            args: Vec<seedframe::tools::ToolArg>,
         }
+        
         impl #tool_struct_name {
             fn new() -> Self {
-                Self { args: #args }
+                Self {
+                    args: #args
+                }
             }
         }
+        
         #m[async_trait::async_trait]
-        impl seedframe::tools::Tool for #tool_struct_name{
+        impl seedframe::tools::Tool for #tool_struct_name {
             fn name(&self) -> &str { &#tool_name }
             fn args(&self) -> &[seedframe::tools::ToolArg] {&self.args}
             fn description(&self) -> &str { &#description }
-            async fn call(&self, args: &str) -> Result<serde_json::Value, seedframe::tools::ToolError> {
+            async fn call(
+                &self,
+                args: &str,
+                states: &dashmap::DashMap<std::any::TypeId, Box<dyn std::any::Any + Send + Sync>>
+            ) -> Result<serde_json::Value, seedframe::tools::ToolError> {
+                #get_state_fn
                 #param_struct
                 let args = args.replace("\\", "");
-                let mut args= args.as_str();
+                let mut args = args.as_str();
                 args = &args[1..args.len() - 1];
                 let params: Params = serde_json::from_str(args)?;
                 Ok(serde_json::to_value(#fn_call)?)
             }
-            }
+        }
     })
 }
 
 fn get_tool_arg_token_streams(
-    args: &[(String, &Type, String)],
+    args: &[(String, Type, String)],
 ) -> Result<(TokenStream, TokenStream, TokenStream), ToolMacroError> {
     let (a_name, a_type, a_desc) = args.iter().fold(
         (Vec::new(), Vec::new(), Vec::new()),
@@ -152,48 +181,86 @@ fn get_tool_arg_token_streams(
 }
 
 fn validate_fn_type_bounds(input: &syn::ItemFn) -> Result<(), darling::Error> {
-    let mut arg_types = Vec::new();
-
     for arg in &input.sig.inputs {
-        match arg {
-            syn::FnArg::Typed(pat_type) => {
-                if let syn::Pat::Ident(_) = &*pat_type.pat {
-                } else {
-                    return Err(
-                        darling::Error::custom("Arguments must be plain identifiers")
-                            .with_span(&pat_type.pat),
-                    );
-                }
-                arg_types.push(&pat_type.ty);
+        if let syn::FnArg::Typed(pat_type) = arg {
+            if parse_state_parameter(pat_type)?.is_some() {
+                continue;
             }
-            syn::FnArg::Receiver(_) => {
-                return Err(
-                    darling::Error::custom("Methods with 'self' are not supported").with_span(arg),
-                );
+            if let syn::Pat::Ident(_) = &*pat_type.pat {
+            } else {
+                return Err(darling::Error::custom("Regular arguments must be plain identifiers").with_span(&pat_type.pat));
             }
         }
     }
-
     Ok(())
 }
 
-fn collect_fn_arg_names(input: &syn::ItemFn) -> Result<Vec<(String, &Type)>, darling::Error> {
-    let mut arg_name_type_pairs: Vec<(String, &Type)> = Vec::new();
-    for arg in &input.sig.inputs {
-        if let syn::FnArg::Typed(pat_type) = arg {
-            if let syn::Pat::Ident(pat_ident) = &*pat_type.pat {
-                arg_name_type_pairs.push((pat_ident.ident.to_string(), &pat_type.ty));
-            } else {
-                return Err(
-                    darling::Error::custom("Expected identifier pattern for argument")
-                        .with_span(&pat_type.pat),
-                );
-            }
-        }
-    }
-    Ok(arg_name_type_pairs)
+struct RegularArg {
+    name: String,
+    ty: syn::Type,
 }
 
+#[derive(Clone)]
+struct StateArg {
+    binding_name: String,
+    ty: syn::Type,
+}
+
+fn collect_fn_arg_names(input: &syn::ItemFn) -> Result<(Vec<RegularArg>, Vec<StateArg>), darling::Error> {
+    let mut regular_args = Vec::new();
+    let mut state_args = Vec::new();
+
+    for arg in &input.sig.inputs {
+        if let syn::FnArg::Typed(pat_type) = arg {
+            if let Some((binding_name, inner_ty)) = parse_state_parameter(pat_type)? {
+                state_args.push(StateArg { binding_name, ty: inner_ty });
+            } else if let syn::Pat::Ident(pat_ident) = &*pat_type.pat {
+                    regular_args.push(RegularArg { name: pat_ident.ident.to_string(), ty: *pat_type.ty.clone() });
+            } else {
+                return Err(darling::Error::custom("Expected identifier pattern for regular argument").with_span(&pat_type.pat));
+            }
+        } else if let syn::FnArg::Receiver(_) = arg {
+            return Err(darling::Error::custom("Methods with 'self' are not supported").with_span(arg));
+        }
+    }
+
+    Ok((regular_args, state_args))
+}
+
+fn parse_state_parameter(pat_type: &syn::PatType) -> Result<Option<(String, syn::Type)>, darling::Error> {
+    let ty = match &*pat_type.ty {
+        syn::Type::Path(type_path) if type_path.path.segments.len() == 1 => {
+            let segment = &type_path.path.segments[0];
+            if segment.ident != "State" {
+                return Ok(None);
+            }
+            match &segment.arguments {
+                syn::PathArguments::AngleBracketed(args) if args.args.len() == 1 => {
+                    if let syn::GenericArgument::Type(inner_ty) = &args.args[0] {
+                        inner_ty
+                    } else {
+                        return Ok(None);
+                    }
+                }
+                _ => return Ok(None),
+            }
+        }
+        _ => return Ok(None),
+    };
+
+    let binding_name = match &*pat_type.pat {
+        syn::Pat::TupleStruct(pat_tuple) if pat_tuple.elems.len() == 1 => {
+            if let syn::Pat::Ident(pat_ident) = &pat_tuple.elems[0] {
+                pat_ident.ident.to_string()
+            } else {
+                return Ok(None);
+            }
+        }
+        _ => return Ok(None),
+    };
+
+    Ok(Some((binding_name, ty.clone())))
+}
 pub fn parse_doc_comment(doc: &str) -> (Option<String>, Vec<(String, String)>) {
     let lines: Vec<String> = doc
         .lines()

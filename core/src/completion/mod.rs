@@ -70,8 +70,6 @@ pub enum StateError {
     AlreadyExists(String),
     #[error("State not found")]
     NotFound,
-    #[error("Failed state fetch")]
-    FailedStateFetch
 }
 const DEFAULT_TOP_N: usize = 1;
 
@@ -102,17 +100,7 @@ pub trait CompletionModel: Send {
     }
 }
 
-pub struct State<T: Send + Sync + 'static>(T);
-
-impl<T: Send + Sync + 'static> State<T> {
-    pub fn new(value: T) -> Self {
-        State(value)
-    }
-
-    pub fn inner(&self) -> &T {
-        &self.0
-    }
-}
+pub struct State<T: Send + Sync + 'static>(pub Arc<T>);
 
 pub struct Client<M: CompletionModel> {
     completion_model: Arc<tokio::sync::RwLock<M>>,
@@ -125,7 +113,7 @@ pub struct Client<M: CompletionModel> {
 
     embedders: Vec<Embedder>,
     token_usage: TokenUsage,
-    states: DashMap<TypeId, Arc<dyn Any + Send + Sync>>,
+    states: DashMap<TypeId, Box<dyn Any + Send + Sync>>,
 }
 
 pub struct PromptBuilder<'a, M: CompletionModel> {
@@ -297,7 +285,6 @@ impl<M: CompletionModel + Send> Client<M> {
     ) -> Self {
         Self {
             completion_model: Arc::new(RwLock::new(completion_model)),
-            // completion_model: Arc::new(Mutex::new(completion_model)),
             history: vec![Message::Preamble(preamble)],
             embedders,
             tools: Box::new(tools),
@@ -326,19 +313,23 @@ impl<M: CompletionModel + Send> Client<M> {
     }
 
     pub fn with_state<T: Send + Sync + 'static>(self, state: T) -> Result<Self, CompletionError> {
-        let type_id = TypeId::of::<T>();
+        let type_id = state.type_id();
         if self.states.contains_key(&type_id) {
-            return Err(CompletionError::StateError(StateError::AlreadyExists(format!("{type_id:?}"))));
+            return Err(
+                CompletionError::StateError(
+                    StateError::AlreadyExists(format!("{:?}",std::any::type_name::<T>()))));
         }
-        self.states.insert(type_id, Arc::new(Box::new(state)));
+        self.states.insert(type_id, Box::new(Arc::new(state)));
         Ok(self)
     }
-
-    pub fn get_state<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, StateError> {
-        self.states
-            .get(&TypeId::of::<T>())
-            .and_then(|entry| Arc::clone(entry.value()).downcast().ok())
-            .ok_or(StateError::NotFound)
+    pub fn get_state<T: Send + Sync + 'static>(&self) -> Result<State<T>, StateError> {
+        let boxed = self.states.get(&TypeId::of::<T>())
+            .ok_or(StateError::NotFound)?;
+        
+        let arc = boxed.downcast_ref::<Arc<T>>()
+            .ok_or(StateError::NotFound)?;
+        
+        Ok(State(arc.clone()))
     }
 
     /// Creates a `PromptBuilder` instance .
@@ -372,14 +363,14 @@ impl<M: CompletionModel + Send> Client<M> {
                 for call in calls {
                     values.push(
                         self.tools
-                            .call(&call.id, &call.name, &call.arguments)
+                            .call(&call.id, &call.name, &call.arguments, &self.states)
                             .await?,
                     );
                 }
             }
             ExecutionStrategy::BestEffort => {
                 for call in calls {
-                    let tr = self.tools.call(&call.id, &call.name, &call.arguments).await;
+                    let tr = self.tools.call(&call.id, &call.name, &call.arguments, &self.states).await;
                     if let Ok(v) = tr {
                         values.push(v);
                     }

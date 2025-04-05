@@ -1,4 +1,7 @@
+use std::any::{Any, TypeId};
+
 use async_trait::async_trait;
+use dashmap::DashMap;
 use schemars::{gen::SchemaSettings, JsonSchema};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -9,8 +12,8 @@ pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn args(&self) -> &[ToolArg];
-
-    async fn call(&self, args: &str) -> Result<Value, ToolError>;
+    async fn call(&self, args: &str, states: &DashMap<TypeId, Box<dyn Any + Send + Sync>>) -> Result<Value, ToolError>;
+        
     fn output_schema(&self) -> Option<Value> {
         None
     }
@@ -88,9 +91,10 @@ impl ToolSet {
         id: &str,
         name: &str,
         args: &str,
+        states: &DashMap<TypeId, Box<dyn Any + Send + Sync>>,
     ) -> Result<ToolResponse, ToolSetError> {
         let tool = self.find_tool(name)?;
-        let v = tool.call(args).await.map_err(ToolSetError::from)?;
+        let v = tool.call(args, states).await.map_err(ToolSetError::from)?;
         Ok(ToolResponse {
             id: id.to_owned(),
             name: name.to_owned(),

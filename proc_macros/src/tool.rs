@@ -84,7 +84,7 @@ pub(crate) fn tool_impl(
 
     let states = state_args.iter().map(|sa| {
         let ty = &sa.ty;
-        quote!{ get_state::<#ty>(states).unwrap() }
+        quote!{ get_state::<#ty>(states)? }
     });
 
     let (args, param_struct, params) = get_tool_arg_token_streams(arg_name_type_desc.as_slice())?;
@@ -104,12 +104,12 @@ pub(crate) fn tool_impl(
     let get_state_fn = quote!{
         fn get_state<T: Send + Sync + 'static>(
             states: &dashmap::DashMap<std::any::TypeId, Box<dyn std::any::Any + Send + Sync>>,
-        ) -> Result<seedframe::completion::State<T>, seedframe::completion::StateError> {
+        ) -> Result<seedframe::completion::State<T>, seedframe::tools::ToolError> {
             let boxed = states.get(&std::any::TypeId::of::<T>())
-                .ok_or(seedframe::completion::StateError::NotFound)?;
+                .ok_or(seedframe::tools::ToolError::StateError(seedframe::completion::StateError::NotFound))?;
             
             let arc = boxed.downcast_ref::<std::sync::Arc<T>>()
-                .ok_or(seedframe::completion::StateError::NotFound)?;
+                .ok_or(seedframe::tools::ToolError::StateError(seedframe::completion::StateError::NotFound))?;
             
             Ok(seedframe::completion::State(arc.clone()))
         }

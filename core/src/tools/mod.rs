@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use thiserror::Error;
 
+use crate::completion::StateError;
+
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
@@ -36,8 +38,10 @@ pub trait Tool: Send + Sync {
 pub enum ToolError {
     #[error("Faild to execute the call")]
     ToolCallError(#[from] Box<dyn std::error::Error + Send + Sync>),
-    #[error("Json Error")]
+    #[error(transparent)]
     JsonError(#[from] serde_json::Error),
+    #[error(transparent)]
+    StateError(#[from] StateError)
 }
 
 pub enum ExecutionStrategy {

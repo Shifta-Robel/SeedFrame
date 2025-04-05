@@ -3,7 +3,7 @@ use seedframe::prelude::*;
 #[client(
     provider = "openai",
     model = "gpt-4o-mini",
-    tools("capitalize","greet")
+    tools("capitalize", "greet")
 )]
 struct SimpleClient;
 
@@ -20,8 +20,13 @@ fn greet(name: String, mood: String) {
 /// # Arguments
 /// * `input`: The text to capitalize
 #[tool]
-fn capitalize(input: String, State(state): State<AppState>, State(state2): State<AppState2>) -> String {
-    format!("{} and number from state is {}, and other state is {}",input.to_uppercase(), state.some_number, state2.other_number)
+fn capitalize(input: String, state: State<AppState>, State(state2): State<AppState2>) -> String {
+    format!(
+        "capitalize: {}, state: {}, state2: {}",
+        input.to_uppercase(),
+        state.0.some_number,
+        state2.other_number
+    )
 }
 
 #[derive(Debug)]
@@ -36,13 +41,14 @@ struct AppState2 {
 
 #[tokio::main]
 async fn main() -> Result<(), seedframe::error::Error> {
-    let mut client = SimpleClient::build("You are a helpful assistant".to_string()).await
-        .with_state(AppState{some_number: 3})?
-        .with_state(AppState2{other_number: 5})?;
+    let mut client = SimpleClient::build("You are a helpful assistant".to_string())
+        .await
+        .with_state(AppState { some_number: 3 })?
+        .with_state(AppState2 { other_number: 5 })?;
 
     client
         // .prompt("Say hello to Rob who's feeling excited")
-        .prompt("Say hello to me in all capital letters!")
+        .prompt("Capitalize the word 'capital'")
         .append_tool_response(true)
         .send()
         .await?;

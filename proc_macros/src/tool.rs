@@ -249,6 +249,7 @@ fn parse_state_parameter(pat_type: &syn::PatType) -> Result<Option<(String, syn:
     };
 
     let binding_name = match &*pat_type.pat {
+        syn::Pat::Ident(pat_ident) => pat_ident.ident.to_string(),
         syn::Pat::TupleStruct(pat_tuple) if pat_tuple.elems.len() == 1 => {
             if let syn::Pat::Ident(pat_ident) = &pat_tuple.elems[0] {
                 pat_ident.ident.to_string()
@@ -261,6 +262,7 @@ fn parse_state_parameter(pat_type: &syn::PatType) -> Result<Option<(String, syn:
 
     Ok(Some((binding_name, ty.clone())))
 }
+
 pub fn parse_doc_comment(doc: &str) -> (Option<String>, Vec<(String, String)>) {
     let lines: Vec<String> = doc
         .lines()

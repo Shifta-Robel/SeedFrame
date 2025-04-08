@@ -20,12 +20,11 @@ fn greet(name: String, mood: String) {
 /// # Arguments
 /// * `input`: The text to capitalize
 #[tool]
-fn capitalize(input: String, state: State<AppState>, State(state2): State<AppState2>) -> String {
+fn capitalize(input: String, State(state): State<AppState>) -> String {
     format!(
-        "capitalize: {}, state: {}, state2: {}",
+        "capitalize: {}, state: {}",
         input.to_uppercase(),
-        state.0.some_number,
-        state2.other_number
+        state.some_number,
     )
 }
 
@@ -34,20 +33,13 @@ struct AppState {
     some_number: i32,
 }
 
-#[derive(Debug)]
-struct AppState2 {
-    other_number: i32,
-}
-
 #[tokio::main]
 async fn main() -> Result<(), seedframe::error::Error> {
     let mut client = SimpleClient::build("You are a helpful assistant".to_string())
         .await
-        .with_state(AppState { some_number: 3 })?
-        .with_state(AppState2 { other_number: 5 })?;
+        .with_state(AppState { some_number: 3 })?;
 
     client
-        // .prompt("Say hello to Rob who's feeling excited")
         .prompt("Capitalize the word 'capital'")
         .append_tool_response(true)
         .send()

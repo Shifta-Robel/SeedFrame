@@ -4,11 +4,11 @@ use notify::{
     event::{CreateKind, ModifyKind},
     Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
 };
-use tracing::{debug, error, info, instrument};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
+use tracing::{debug, error, info, instrument};
 
 use crate::{
     document::Document,
@@ -23,7 +23,7 @@ use crate::{
 use super::{utils::load_initial, FileLoaderError};
 
 const DEFAULT_CHANNEL_CAPACITY: usize = 20;
-const DEBOUNCE_DURATION_MILLIS: u64= 500;
+const DEBOUNCE_DURATION_MILLIS: u64 = 500;
 
 #[derive(Debug)]
 /// A builder for constructing a `FileUpdatingLoader`.
@@ -50,7 +50,10 @@ impl FileUpdatingLoaderBuilder {
             .iter()
             .map(|p| Pattern::new(p))
             .collect::<Result<_, _>>()?;
-        info!("Successfully evaluated {} glob patterns", evaluated_patterns.len());
+        info!(
+            "Successfully evaluated {} glob patterns",
+            evaluated_patterns.len()
+        );
 
         Ok(Self {
             glob_patterns,
@@ -67,9 +70,13 @@ impl FileUpdatingLoaderBuilder {
     /// # Returns
     /// * `FileOnceLoader` - A new `FileOnceLoader` instance.
     pub fn build(self) -> FileUpdatingLoader {
-        let files =
-            resolve_input_to_files(self.glob_patterns.iter().map(|s| s.as_str()).collect()).unwrap();
-        let capacity = if files.is_empty() {DEFAULT_CHANNEL_CAPACITY} else {files.len()};
+        let files = resolve_input_to_files(self.glob_patterns.iter().map(|s| s.as_str()).collect())
+            .unwrap();
+        let capacity = if files.is_empty() {
+            DEFAULT_CHANNEL_CAPACITY
+        } else {
+            files.len()
+        };
         let (tx, _rx) = broadcast::channel(capacity);
         debug!("broadcast channel with capacity: {} created", capacity);
 
@@ -118,10 +125,14 @@ impl Loader for FileUpdatingLoader {
             initial_docs.into_iter().for_each(|doc| {
                 if let Err(e) = self.tx.send(doc) {
                     error!("Loader failed to send document: {} to subscribers", e.0.id);
-                } else { sent_docs_count += 1; }
+                } else {
+                    sent_docs_count += 1;
+                }
             });
-            info!("Loader sent {} of {} initial documents to subscribers",
-                sent_docs_count, total_docs_count);
+            info!(
+                "Loader sent {} of {} initial documents to subscribers",
+                sent_docs_count, total_docs_count
+            );
 
             // setup notify thread
             let to_be_watched = get_dirs_to_watch(
@@ -140,11 +151,17 @@ impl Loader for FileUpdatingLoader {
 
                 for path in &to_be_watched.clone() {
                     if let Err(e) = watcher.watch(path, RecursiveMode::Recursive) {
-                        error!("Failed to add path {} to watcher: {}", path.to_str().unwrap_or("unknown"),e);
+                        error!(
+                            "Failed to add path {} to watcher: {}",
+                            path.to_str().unwrap_or("unknown"),
+                            e
+                        );
                     } else {
-                        info!("Added path {} to watcher", path.to_str().unwrap_or("unknown"));
+                        info!(
+                            "Added path {} to watcher",
+                            path.to_str().unwrap_or("unknown")
+                        );
                     }
-
                 }
 
                 let mut last_event_time = Instant::now();
@@ -155,7 +172,9 @@ impl Loader for FileUpdatingLoader {
                         for event in evt_rx.iter() {
                             let event = event.unwrap();
                             let out = process_event(&event, &pc);
-                            if out.is_none() { continue; }
+                            if out.is_none() {
+                                continue;
+                            }
                             let out = out.unwrap();
                             txc.send(document_for_event(out.0.as_str(), out.1)).unwrap();
                             last_event_time = now;
@@ -204,7 +223,7 @@ fn process_event(event: &Event, patterns: &[Pattern]) -> Option<(String, EventTy
         _ => {
             debug!("Unhandled event type {:?}", event.kind);
             None
-        },
+        }
     }
 }
 
@@ -215,7 +234,7 @@ mod tests {
     use std::path::PathBuf;
     use tempfile;
 
-    fn init_tracing(){
+    fn init_tracing() {
         tracing_subscriber::fmt().init();
     }
 
@@ -276,9 +295,13 @@ mod tests {
         let file_path = temp_dir.path().join("test.txt");
         std::fs::write(&file_path, "initial").unwrap();
 
-        let builder = FileUpdatingLoaderBuilder::new(vec![
-            temp_dir.path().join("*.txt").to_str().unwrap().to_string()
-        ]).unwrap();
+        let builder = FileUpdatingLoaderBuilder::new(vec![temp_dir
+            .path()
+            .join("*.txt")
+            .to_str()
+            .unwrap()
+            .to_string()])
+        .unwrap();
         let loader = builder.build();
 
         let mut receiver = loader.subscribe().await;
@@ -296,9 +319,13 @@ mod tests {
         let non_matching_path = temp_dir.path().join("test.md");
         std::fs::write(&matching_path, "initial").unwrap();
 
-        let builder = FileUpdatingLoaderBuilder::new(vec![
-            temp_dir.path().join("*.txt").to_str().unwrap().to_string()
-        ]).unwrap();
+        let builder = FileUpdatingLoaderBuilder::new(vec![temp_dir
+            .path()
+            .join("*.txt")
+            .to_str()
+            .unwrap()
+            .to_string()])
+        .unwrap();
         let loader = builder.build();
 
         let mut receiver = loader.subscribe().await;

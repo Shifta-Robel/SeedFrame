@@ -17,6 +17,9 @@ seedframe_macros =  { path = "../proc_macros"}
 notify = "8.0.0"
 tracing = "0.1.41"
 pinecone-sdk = {version ="0.1.2", optional = true}
+schemars = "0.8.22"
+thiserror = "2.0.12"
+dashmap = "6.1.0"
 
 [dev-dependencies]
 tempfile = "3.16.0"

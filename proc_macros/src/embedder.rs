@@ -1,10 +1,9 @@
-use quote::ToTokens;
 use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::TokenStream;
+use quote::ToTokens;
 use quote::{format_ident, quote};
 use std::fmt::Display;
-
-type DarlingError = darling::Error;
+use thiserror::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct EmbedderConfig {
@@ -13,53 +12,20 @@ struct EmbedderConfig {
     model: Option<String>,
 }
 
-#[allow(unused)]
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub(crate) enum EmbedderMacroError {
+    #[error("Unknown embedding model provider: '{0}'. valid options are openai,")]
     UnknownEmbedderModel(String),
-    ParseError(darling::Error),
+    #[error("Failed to parse loader macro: ")]
+    ParseError(#[from] darling::Error),
+    #[error("Unsupported argument '{0}' for '{1}' embedder type")]
     UnsupportedArgument(String, String),
+    #[error("Missing required argument '{0}' for '{1}' embedder type")]
     MissingArgument(String, String),
+    #[error("Missing field with #[vector_store] attribute")]
     MissingVectorStore,
+    #[error("Unrecognized attribute {0}")]
     UnrecognizedAttribute(String),
-}
-
-impl From<DarlingError> for EmbedderMacroError {
-    fn from(err: DarlingError) -> Self {
-        Self::ParseError(err)
-    }
-}
-
-impl Display for EmbedderMacroError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ParseError(e) => {
-                write!(f, "Failed to parse loader macro: {e}")
-            }
-            Self::UnknownEmbedderModel(l) => {
-                write!(
-                    f,
-                    "Unknown embedding model provider: '{l}'. valid options are openai,"
-                )
-            }
-            Self::UnsupportedArgument(arg, embedder) => {
-                write!(
-                    f,
-                    "Unsupported argument '{arg}' for '{embedder}' embedder type"
-                )
-            }
-            Self::MissingArgument(arg, embedder) => {
-                write!(
-                    f,
-                    "Missing required argument '{arg}' for '{embedder}' embedder type"
-                )
-            }
-            EmbedderMacroError::MissingVectorStore => {
-                write!(f, "Missing field with #[vector_store] attribute")
-            }
-            EmbedderMacroError::UnrecognizedAttribute(s) => write!(f, "Unrecognized attribute {s}"),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -123,7 +89,7 @@ fn validate_config(
             Ok(())
         }
     };
-    _ = check_arg("model", &config.model)?;
+    check_arg("model", &config.model)?;
     Ok(())
 }
 fn generate_builder(
@@ -136,8 +102,7 @@ fn generate_builder(
     let vector_store_instanciated = quote! {
         ::std::sync::Arc::new(::tokio::sync::Mutex::new(::std::boxed::Box::new(#vector_store_type::build().await.unwrap().inner)))
     };
-    let mut loader_instances = quote! {
-    };
+    let mut loader_instances = quote! {};
 
     for loader_type in loader_types {
         let string_type = loader_type.to_token_stream().to_string().to_uppercase();
@@ -252,7 +217,7 @@ pub(crate) fn embedder_impl(
         vector_store_type,
         loader_types,
         &config,
-        &struct_vis,
+        struct_vis,
     );
 
     Ok(quote! {

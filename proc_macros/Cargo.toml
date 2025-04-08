@@ -12,3 +12,4 @@ proc-macro-error = "1.0.4"
 proc-macro2 = "1.0.93"
 quote = "1.0.38"
 syn = {version="2.0.91", features = ["full", "fold"]}
+thiserror = "2.0.12"

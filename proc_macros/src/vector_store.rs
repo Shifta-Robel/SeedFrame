@@ -2,8 +2,7 @@ use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::TokenStream;
 use quote::quote;
 use std::fmt::Display;
-
-type DarlingError = darling::Error;
+use thiserror::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct VectorStoreConfig {
@@ -15,50 +14,19 @@ struct VectorStoreConfig {
     #[darling(default)]
     env_var: Option<String>,
     #[darling(default)]
-    source_tag: Option<String>
+    source_tag: Option<String>,
 }
 
-#[allow(unused)]
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub(crate) enum VectorStoreMacroError {
+    #[error("Unknown VectorStore kind: '{0}'. valid options are InMemoryVectorStore")]
     UnknownVectorStore(String),
-    ParseError(darling::Error),
+    #[error("Failed to parse vector_store macro: ")]
+    ParseError(#[from] darling::Error),
+    #[error("Unsupported argument '{0}' for '{1}' vector store type")]
     UnsupportedArgument(String, String),
+    #[error("Missing required argument '{0}' for '{1}' vector_store type")]
     MissingArgument(String, String),
-}
-
-impl From<DarlingError> for VectorStoreMacroError {
-    fn from(err: DarlingError) -> Self {
-        Self::ParseError(err)
-    }
-}
-
-impl Display for VectorStoreMacroError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ParseError(e) => {
-                write!(f, "Failed to parse vector_store macro: {e}")
-            }
-            Self::UnknownVectorStore(l) => {
-                write!(
-                    f,
-                    "Unknown VectorStore kind: '{l}'. valid options are InMemoryVectorStore"
-                )
-            }
-            Self::UnsupportedArgument(arg, vector_store) => {
-                write!(
-                    f,
-                    "Unsupported argument '{arg}' for '{vector_store}' vector store type"
-                )
-            }
-            Self::MissingArgument(arg, vector_store) => {
-                write!(
-                    f,
-                    "Missing required argument '{arg}' for '{vector_store}' vector_store type"
-                )
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -73,7 +41,8 @@ impl Display for VectorStoreType {
             f,
             "{}",
             match self {
-                Self::InMemoryVectorStore => "seedframe::vector_store::in_memory_vec_store::InMemoryVectorStore",
+                Self::InMemoryVectorStore =>
+                    "seedframe::vector_store::in_memory_vec_store::InMemoryVectorStore",
                 Self::Pinecone => "seedframe::vector_store::pinecone::PineconeVectorStore",
             }
         )
@@ -128,10 +97,10 @@ fn validate_config(
         }
     };
 
-    _ = check_arg("host", &config.host)?;
-    _ = check_arg("namespace", &config.namespace)?;
-    _ = check_arg("env_var", &config.env_var)?;
-    _ = check_arg("source_tag", &config.source_tag)?;
+    check_arg("host", &config.host)?;
+    check_arg("namespace", &config.namespace)?;
+    check_arg("env_var", &config.env_var)?;
+    check_arg("source_tag", &config.source_tag)?;
     Ok(())
 }
 
@@ -149,14 +118,15 @@ fn generate_builder(
                     })
                 }
             }
-        },
+        }
         VectorStoreType::Pinecone => {
             let host: &str = config.host.as_ref().unwrap();
             let env: Option<String> = config.env_var.clone();
             let source_tag: Option<String> = config.source_tag.clone();
             let namespace: Option<String> = config.namespace.clone();
             //
-            let host_expr = syn::parse_str::<syn::Expr>(&format!("\"{host}\".to_string()")).unwrap();
+            let host_expr =
+                syn::parse_str::<syn::Expr>(&format!("\"{host}\".to_string()")).unwrap();
             let env_expr = option_expr(env);
             let source_tag_expr = option_expr(source_tag);
             let namespace_expr = option_expr(namespace);
@@ -172,7 +142,11 @@ fn generate_builder(
 }
 
 fn option_expr(opt: Option<String>) -> syn::Expr {
-    let expr = if let Some(v) = opt { &format!("Some(\"{}\".to_string())", v) }else { "None" };
+    let expr = if let Some(v) = opt {
+        &format!("Some(\"{}\".to_string())", v)
+    } else {
+        "None"
+    };
     syn::parse_str(expr).unwrap()
 }
 
@@ -204,7 +178,7 @@ pub(crate) fn vector_store_impl(
     validate_config(&config, &vector_store_type)?;
 
     let (struct_ident, struct_vis) = (&input.ident, &input.vis);
-    let builder_impl = generate_builder(&vector_store_type, &config, &struct_vis);
+    let builder_impl = generate_builder(&vector_store_type, &config, struct_vis);
     let kind: syn::Type =
         syn::parse_str(&vector_store_type.to_string()).expect("Failed to parse type");
 

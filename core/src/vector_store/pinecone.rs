@@ -79,7 +79,13 @@ impl VectorStore for PineconeVectorStore {
         let resp = index_guard
             .query_by_value(
                 query.iter().map(|&v| v as f32).collect::<Vec<f32>>(),
-                None, n as u32, &self.namespace, None, Some(true), Some(true))
+                None,
+                n as u32,
+                &self.namespace,
+                None,
+                Some(true),
+                Some(true),
+            )
             .await?;
         Ok(Embeddings::try_from(resp)?.0)
     }
@@ -113,7 +119,7 @@ impl TryFrom<QueryResponse> for Embeddings {
         let mut embeddings: Vec<Embedding> = vec![];
         for m in value.matches {
             let mut raw_data = String::new();
-            let metadata = m.metadata.ok_or(VectorStoreError::Undefined(
+            let metadata = m.metadata.ok_or(VectorStoreError::PineconeError(
                 "Query response without raw data".to_string(),
             ))?;
             metadata
@@ -132,7 +138,7 @@ impl TryFrom<QueryResponse> for Embeddings {
 }
 
 #[cfg(test)]
-mod tests{
+mod tests {
     use super::*;
 
     #[tokio::test]
@@ -140,7 +146,13 @@ mod tests{
         let host = std::env::var("PINECONE_IDX_HOST").unwrap();
         let pcvs = PineconeVectorStore::new(None, host, None, None).await;
         assert!(pcvs.is_ok());
-        let resp = pcvs.unwrap().index.lock().await.describe_index_stats(None).await;
+        let resp = pcvs
+            .unwrap()
+            .index
+            .lock()
+            .await
+            .describe_index_stats(None)
+            .await;
         assert!(resp.is_ok());
     }
 

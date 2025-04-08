@@ -2,8 +2,7 @@ use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::fmt::Display;
-
-type DarlingError = darling::Error;
+use thiserror::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct LoaderConfig {
@@ -16,41 +15,16 @@ struct LoaderConfig {
     interval: Option<u64>,
 }
 
-#[allow(unused)]
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub(crate) enum LoaderMacroError {
+    #[error("Unknown Loader kind: '{0}'. valid options are FileOnceLoader,FileUpdatingLoader,HttpOnceLoader")]
     UnknownLoader(String),
-    ParseError(darling::Error),
+    #[error("Failed to parse loader macro: ")]
+    ParseError(#[from] darling::Error),
+    #[error("Unsupported argument '{0}' for '{1}' loader type")]
     UnsupportedArgument(String, String),
+    #[error("Missing required argument '{0}' for '{1}' loader type")]
     MissingArgument(String, String),
-}
-
-impl From<DarlingError> for LoaderMacroError {
-    fn from(err: DarlingError) -> Self {
-        Self::ParseError(err)
-    }
-}
-
-impl Display for LoaderMacroError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ParseError(e) => {
-                write!(f, "Failed to parse loader macro: {e}")
-            }
-            Self::UnknownLoader(l) => {
-                write!(f, "Unknown Loader kind: '{l}'. valid options are FileOnceLoader, FileUpdatingLoader, HttpOnceLoader")
-            }
-            Self::UnsupportedArgument(arg, loader) => {
-                write!(f, "Unsupported argument '{arg}' for '{loader}' loader type")
-            }
-            Self::MissingArgument(arg, loader) => {
-                write!(
-                    f,
-                    "Missing required argument '{arg}' for '{loader}' loader type"
-                )
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -120,9 +94,9 @@ fn validate_config(
             Ok(())
         }
     };
-    _ = check_arg("path", &config.path)?;
-    _ = check_arg("url", &config.url)?;
-    _ = check_arg("interval", &config.interval.map(|v| v.to_string()))?;
+    check_arg("path", &config.path)?;
+    check_arg("url", &config.url)?;
+    check_arg("interval", &config.interval.map(|v| v.to_string()))?;
 
     Ok(())
 }
@@ -183,7 +157,7 @@ pub(crate) fn loader_impl(
     validate_config(&config, &loader_type)?;
 
     let (struct_ident, struct_vis) = (&input.ident, &input.vis);
-    let builder_impl = generate_builder(&loader_type, &config, &struct_vis);
+    let builder_impl = generate_builder(&loader_type, &config, struct_vis);
     let kind: syn::Type = syn::parse_str(&loader_type.to_string()).expect("Failed to parse type");
 
     let static_loader_instance_ident =

@@ -7,11 +7,17 @@ use crate::{
 use embedding::Embedding;
 use model::EmbeddingModel;
 use std::sync::Arc;
+use thiserror::Error;
 use tokio::sync::Mutex;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum EmbedderError {
-    Undefined,
+    #[error("Request error: {0}")]
+    RequestError(String),
+    #[error("Response parse error: {0}")]
+    ParseError(String),
+    #[error("Provider error: {0}")]
+    ProviderError(String),
 }
 
 /// The `Embedder` listens to loaders, generates embeddings for incoming documents,
@@ -64,7 +70,9 @@ impl Embedder {
                 while let Ok(doc) = listener.recv().await {
                     let embedded_data = if !&doc.data.is_empty() {
                         embedding_model.embed(&doc.data).await.unwrap()
-                    } else { vec![] };
+                    } else {
+                        vec![]
+                    };
                     vector_store
                         .lock()
                         .await

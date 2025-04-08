@@ -1,6 +1,7 @@
-use async_trait::async_trait;
 #[cfg(feature = "pinecone")]
 use ::pinecone_sdk::utils::errors::PineconeError;
+use async_trait::async_trait;
+use thiserror::Error;
 
 use super::embeddings::embedding::Embedding;
 
@@ -10,13 +11,16 @@ pub mod pinecone;
 
 pub use in_memory_vec_store::InMemoryVectorStore;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum VectorStoreError {
-    Undefined(String),
+    #[error("Failed to create store: {0}")]
     FailedToCreateStore(String),
+    #[error("Failed upsert: {0}")]
     FailedUpsert(String),
+    #[error("Embedding not found")]
     EmbeddingNotFound,
     #[cfg(feature = "pinecone")]
+    #[error("Pinecone error: {0}")]
     Pinecone(String),
 }
 

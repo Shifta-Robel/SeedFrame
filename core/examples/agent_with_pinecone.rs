@@ -33,5 +33,5 @@ async fn main() {
     .await;
     // delay for the vector store to finish upserting the loaded resource before the first prompt
     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-    _ = dbg!(c.prompt("What's a mikmak").await.unwrap());
+    _ = dbg!(c.prompt("What's a mikmak").send().await.unwrap());
 }

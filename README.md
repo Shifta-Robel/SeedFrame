@@ -1,138 +1,111 @@
-# Seedframe
-A simple, and robust Rust library for writing LLM applications
+# Seedframe 🌱
 
-## Table of Contents
-
-1.  [Features](#org3877a2e)
-2.  [Installation](#org8fea25f)
-3.  [Usage](#org8330441)
-    1.  [Architectural overview](#orga27e92a)
-    2.  [Constructing a client](#org3ee22e6)
-    3.  [Using the client](#orgee09acc)
-4.  [RoadMap](#org3e20cd9)
-
-
-
-<a id="org3877a2e"></a>
+A clean, macro-driven Rust library for building LLM applications.
 
 ## Features
 
--   Simple boiler-plate free setup
--   Async
--   Generic and extensible API
--   Macros
-
-
-<a id="org8fea25f"></a>
+- **Declarative API** through straight forward proc-macros
+- **Modular Architecture** with clearly defined components:
+  - **Loaders**: Data ingestion from various sources (files, APIs, etc.)
+  - **Vector Stores**: Embedding storage and retrieval (In-memory, Redis, etc.)
+  - **Embedders**: Text embedding providers
+  - **LLM Clients**: Unified interface for different LLM providers
+  - **Tools**: Function calling abstractions with state management and automatic documentation
+  - **Extractors**: Structured output generation from LLM responses
 
 ## Installation
 
-Add the library to your cargo dependencies
+Add to your `Cargo.toml`:
 ```toml
 [dependencies]
-seedframe = "0.0.1"
-seedframe_macros = "0.0.1"
-async-trait = "0.1.86"
+seedframe = "0.1"
 tokio = { version = "1.42.0", features = ["full"] }
+# If you'll be using Extractors or custom types as tool-call arguments
+schemars = "0.8.22"
+serde = { version = "1.0.217", features = ["derive"] }
 ```
-
-<a id="org8330441"></a>
-
 ## Usage
-
 This library is in early stages and its API  is subject to change.
 
+### Tool calling and structured extraction
 
-<a id="orga27e92a"></a>
+The `tool` proc-macro is responsible for declaring tool calls, and the `tools` attribute on the `client` proc-macro attaches them to the client.
+The macro parses the descriptions for the function and it's arguments from the doc comments, its an error not to document the function or not to document every argument except the state arguments
 
-### Architectural overview
+You could also extract structured output from the llms, the target types need to implement the `Extractor`, `schemars::JsonSchema` and the `serde::Deserialize` traits.
+Like the tools the description for the type and for it's fields will get extracted from the docs and get passed to the llm, but its not an error to leave them undocumented.
 
-Seedframe is a library for creating LLM applications like RAG systems. It provides a `Client` type that can be loaded up with data from text documents, HTTP api's or anything that can be embedded using `Embedder`s.
+```rust
+#[client(provider = "openai", model = "gpt-4o-mini", tools("greet"))]
+struct ToolClient;
 
+/// Perform sentiment analysis on text
+/// # Arguments
+/// * `text`: Input text to analyze
+/// * `language`: Language of the text (ISO 639-1)
+#[tool]
+fn analyze(text: String, language: String) -> String {
+    todo!("implementation");
+}
 
-<a id="org3ee22e6"></a>
+#[derive(Extractor)]
+struct PersonData {
+    /// Age in years
+    age: u8,
+    /// Email address
+    email: String
+}
 
-### Constructing a client
+#[tokio::main]
+async fn main() -> Result<()> {
+    let mut client = ToolClient::build("You're a data analyst".to_string())
+        .await
+        .with_state(AppState::new())?;
 
-A client type can be defined as such:
+    // Tool call
+    client.prompt("Analyze this: 'I love Rust!' (en)")
+        .send()
+        .await?;
 
+    // Structured extraction
+    let person = client.prompt("John is 30, email john@example.com")
+        .extract::<PersonData>()
+        .await?;
+}
+```
+
+### Building a simple RAG
 ```rust
 use seedframe::prelude::*;
 
-// Data can be loaded using Loaders.
-// Users can write their own loaders
-// or use built in loaders like `FileOnceLoader`.
-#[loader(kind = "FileOnceLoader", path = "/tmp/data/fingly.txt")]
+// Declare file loader that doesnt check for updates, loading files that match the glob pattern
+#[loader(kind = "FileOnceLoader", path = "/tmp/data/**/*.txt")]
 pub struct MyLoader;
 
-// Loaded data needs to be embedded and stored
-// into a vector store, like an `InMemoryVectorStore`
-// for use in a client.
 #[vector_store(kind = "InMemoryVectorStore")]
 pub struct MyVectorStore;
 
-
-// Before loaded data is stored, it needs to be embedded
-// using an Embedder. This one uses the OpenAI provider
-// as the client will be an OpenAI chat client.
 #[embedder(provider = "openai", model = "text-embedding-3-small")]
 struct MyEmbedder {
-
-    // Notice how we register our vector store, and loaders
-    // here.
-    //
-    // We need one vector store but we can have several loaders
     #[vector_store]
     my_vector_store: MyVectorStore,
-
     #[loader]
     my_loader: MyLoader,
 }
 
-// Finally, we construct our client out of our embedders
 #[client(provider = "openai", model = "gpt-4o-mini")]
 struct MyClient {
-    // we can have multiple embedders, as long as they
-    // are compatible with our client.
     #[embedder]
     my_embedder: MyEmbedder,
 }
-```
 
-<a id="orgee09acc"></a>
-
-### Using the client
-
-```rust
 #[tokio::main]
 async fn main() {
-    // We can build our client by providing a system prompt.
-    let mut c = MyClient::build(
-        "you are a helpful llm that helps user with defining terms".to_string(),
-    )
-    .await;
-
-    // Documents could take time to be loaded so we introduce a delay here.
-    // The amount will vary based on our use case, and factors like internet
-    // connection speeds.
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-
-    // We then use functions provided by the `Client` type to
-    // interact with our LLM.
-    let resp = c.prompt("what does fingly mean").await.unwrap();
-
-    dbg!(resp);
+    let mut client = MyClient::build(
+        "You are a helpful assistant".to_string()
+    ).await;
+    
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    let response = client.prompt("Explain quantum computing").send().await.unwrap();
 }
 ```
-
-<a id="org3e20cd9"></a>
-
-## RoadMap
-
--   [ ] More customization options
--   [ ] More embedding and text completion providers
--   [ ] More loaders
--   [ ] More vector store implementations
--   [ ] Integration with platforms like X(Twitter), Discord, Telegram
--   and more&#x2026;
-

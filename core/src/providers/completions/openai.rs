@@ -251,16 +251,18 @@ impl CompletionModel for OpenAICompletionModel {
 
 #[cfg(test)]
 mod tests {
+    use std::any::{Any, TypeId};
+
+    use dashmap::DashMap;
     use serde_json::Value;
 
     use crate::tools::{ExecutionStrategy, Tool, ToolArg, ToolError};
-
     use super::*;
 
     #[tokio::test]
+    #[ignore]
     async fn simple_openai_completion_request() {
-        tracing_subscriber::fmt().init();
-        let api_key = std::env::var("SEEDFRAME_TEST_OPENAI_KEY")
+        let api_key = std::env::var("SEEDFRAME_OPENAI_API_KEY")
             .unwrap()
             .to_string();
         let api_url = "https://api.openai.com/v1/chat/completions".to_string();
@@ -302,9 +304,10 @@ For this test to be considered successful, reply with "okay" without the quotes,
         )));
     }
     #[tokio::test]
+    #[ignore]
     async fn openai_toolcall_test() {
         tracing_subscriber::fmt().init();
-        let api_key = std::env::var("SEEDFRAME_TEST_OPENAI_KEY")
+        let api_key = std::env::var("SEEDFRAME_OPENAI_API_KEY")
             .unwrap()
             .to_string();
         let api_url = "https://api.openai.com/v1/chat/completions".to_string();
@@ -370,12 +373,12 @@ For this test to be considered successful, reply with "okay" without the quotes,
 
         #[async_trait]
         impl Tool for JokeTool {
-            async fn call(&self, args: &Value) -> Result<Value, ToolError> {
+            async fn call(&self, args: &str, _states: &DashMap<TypeId, Box<dyn Any + Send + Sync>>) -> Result<Value, ToolError> {
                 #[derive(serde::Deserialize)]
                 struct Params {
                     lang: String,
                 }
-                let params: Params = serde_json::from_value(args.clone())?;
+                let params: Params = serde_json::from_str(args)?;
                 Ok(serde_json::Value::from(tell_joke(&params.lang)))
             }
             fn name(&self) -> &str {
@@ -390,7 +393,7 @@ For this test to be considered successful, reply with "okay" without the quotes,
         }
         #[async_trait]
         impl Tool for PoemTool {
-            async fn call(&self, args: &str) -> Result<Value, ToolError> {
+            async fn call(&self, args: &str, _states: &DashMap<TypeId, Box<dyn Any + Send + Sync>>) -> Result<Value, ToolError> {
                 #[derive(serde::Deserialize)]
                 struct Params {
                     lenght: u32,

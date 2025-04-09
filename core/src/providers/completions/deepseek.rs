@@ -185,6 +185,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore]
     async fn simple_deepseek_completion_request() {
         tracing_subscriber::fmt().init();
         let api_key = std::env::var("SEEDFRAME_TEST_DEEPSEEK_KEY")

@@ -182,6 +182,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore]
     async fn simple_xai_completion_request() {
         tracing_subscriber::fmt().init();
         let api_key = std::env::var("SEEDFRAME_TEST_XAI_KEY").unwrap().to_string();

@@ -99,13 +99,8 @@ impl VectorStore for InMemoryVectorStore {
 mod tests {
     use super::*;
 
-    fn init_tracing() {
-        tracing_subscriber::fmt().init();
-    }
-
     #[tokio::test]
     async fn test_get_by_id() {
-        init_tracing();
         let embedding = Embedding {
             id: "id".to_string(),
             raw_data: "hello world".to_string(),
@@ -128,7 +123,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_store() {
-        init_tracing();
         let store = InMemoryVectorStore {
             embeddings: RwLock::new(HashMap::new()),
         };

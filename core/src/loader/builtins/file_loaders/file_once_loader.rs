@@ -127,10 +127,6 @@ mod tests {
         }
     }
 
-    fn init_tracing() {
-        tracing_subscriber::fmt().init();
-    }
-
     #[tokio::test]
     async fn test_invalid_glob_patterns() {
         let invalid_patterns = vec![
@@ -159,7 +155,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_loads_exact_files() {
-        init_tracing();
         let dir = tempdir().unwrap();
         let file_names = ["t1.txt", "t2.txt"];
         create_test_files(dir.path(), &file_names).await;
@@ -182,7 +177,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_glob_pattern_matching() {
-        init_tracing();
         let dir = tempdir().unwrap();
         create_test_files(dir.path(), &["t1.txt", "t2.txt", "img.jpg"]).await;
 
@@ -203,7 +197,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_no_matching_files() {
-        init_tracing();
         let dir = tempdir().unwrap();
         let glob_path = dir.path().join("*.md").to_str().unwrap().to_string();
 

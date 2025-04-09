@@ -200,6 +200,7 @@ struct RegularArg {
     ty: syn::Type,
 }
 
+#[allow(unused)]
 #[derive(Clone)]
 struct StateArg {
     binding_name: String,

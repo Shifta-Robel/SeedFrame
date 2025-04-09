@@ -74,8 +74,9 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore]
     async fn simple_openai_embed_request() {
-        let api_key = std::env::var("SEEDFRAME_TEST_OPENAI_KEY")
+        let api_key = std::env::var("SEEDFRAME_OPENAI_API_KEY")
             .unwrap()
             .to_string();
         let api_url = "https://api.openai.com/v1/embeddings".to_string();

@@ -27,6 +27,8 @@ serde = { version = "1.0.217", features = ["derive"] }
 ## Usage
 This library is in early stages and its API  is subject to change.
 
+Check out the [examples](https://github.com/Shifta-Robel/SeedFrame/tree/main/core/examples) directory for detailed usage demos.
+
 ### Tool calling and structured extraction
 
 The `tool` proc-macro is responsible for declaring tool calls, and the `tools` attribute on the `client` proc-macro attaches them to the client.
@@ -36,7 +38,7 @@ You could also extract structured output from the llms, the target types need to
 Like the tools the description for the type and for it's fields will get extracted from the docs and get passed to the llm, but its not an error to leave them undocumented.
 
 ```rust
-#[client(provider = "openai", model = "gpt-4o-mini", tools("greet"))]
+#[client(provider = "openai", model = "gpt-4o-mini", tools("analyze"))]
 struct ToolClient;
 
 /// Perform sentiment analysis on text
@@ -109,3 +111,15 @@ async fn main() {
     let response = client.prompt("Explain quantum computing").send().await.unwrap();
 }
 ```
+
+## Contributing
+
+All contributions as welcome! Writing integrations for LLM providers and Embedders is some what trivial, use the implementations for the already supported providers as inspiration.
+This library could use support for more loaders, vector stores... so don't shy away from helping!
+
+
+## ⭐🌟⭐ Leave a Star!
+
+If you find seedframe helpful or interesting, please consider giving it a star so more people get to see it!
+
+[![Star this project](https://img.shields.io/github/stars/Shifta-Robel/seedframe?style=social)](https://github.com/Shifta-Robel/seedframe/stargazers)

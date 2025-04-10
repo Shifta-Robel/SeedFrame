@@ -118,8 +118,6 @@ All contributions as welcome! Writing integrations for LLM providers and Embedde
 This library could use support for more loaders, vector stores... so don't shy away from helping!
 
 
-## ⭐🌟⭐ Leave a Star!
+#### ⭐ Leave a Star!
 
 If you find seedframe helpful or interesting, please consider giving it a star so more people get to see it!
-
-[![Star this project](https://img.shields.io/github/stars/Shifta-Robel/seedframe?style=social)](https://github.com/Shifta-Robel/seedframe/stargazers)

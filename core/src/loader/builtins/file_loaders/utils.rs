@@ -1,10 +1,13 @@
 use glob::{glob, Pattern};
+#[cfg(feature = "pdf")]
 use pdf_extract::extract_text;
+#[cfg(feature = "pdf")]
+use tracing::error;
 use std::{
     io,
     path::{Path, PathBuf},
 };
-use tracing::{error, info, instrument};
+use tracing::{info, instrument};
 use walkdir::WalkDir;
 
 use crate::document::Document;
@@ -55,6 +58,25 @@ pub(super) fn resolve_input_to_files(inputs: Vec<&str>) -> io::Result<Vec<PathBu
 /// # Returns
 /// * `Ok(String)` - The content of the file as a string.
 /// * `Err(io::Error)` - An error if the file cannot be read or parsed.
+pub(super) fn parse_file(file_path: &Path) -> io::Result<String> {
+    let content = std::fs::read_to_string(file_path)?;
+    info!("Successfully parsed file: {:?}", file_path);
+    Ok(content)
+}
+
+#[instrument]
+/// Parses the content of a file based on its extension.
+///
+/// This function reads the content of a file. If the file is a PDF, it uses the `pdf_extract` crate
+/// to extract text from the PDF. For all other file types, it reads the file as plain text.
+///
+/// # Arguments
+/// * `file_path` - The path to the file to parse.
+///
+/// # Returns
+/// * `Ok(String)` - The content of the file as a string.
+/// * `Err(io::Error)` - An error if the file cannot be read or parsed.
+#[cfg(feature = "pdf")]
 pub(super) fn parse_file(file_path: &Path) -> io::Result<String> {
     let content = if let Some(ext) = file_path.extension() {
         if ext == "pdf" {

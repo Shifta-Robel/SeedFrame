@@ -95,14 +95,14 @@ async fn main() -> Result<(), seedframe::error::Error> {
         .send()
         .await?;
 
-    println!("Meeting scheduled: {:#?}", response);
+    println!("Meeting scheduled: {response:#?}");
 
     let response = client
         .prompt("convert the temperature 32.2 from Celcius to Fahrenheit")
         .send()
         .await?;
 
-    println!("Temprature converted : {:#?}", response);
+    println!("Temprature converted : {response:#?}");
 
     Ok(())
 }

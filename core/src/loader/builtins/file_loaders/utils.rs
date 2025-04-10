@@ -95,7 +95,7 @@ pub(super) fn parse_file(file_path: &Path) -> io::Result<String> {
 }
 
 pub(super) fn load_initial(patterns: &[Pattern]) -> Vec<Document> {
-    let files = resolve_input_to_files(patterns.iter().map(|s| s.as_str()).collect()).unwrap();
+    let files = resolve_input_to_files(patterns.iter().map(glob::Pattern::as_str).collect()).unwrap();
     let mut documents: Vec<Document> = vec![];
     for file in files {
         let data = parse_file(&file).unwrap();

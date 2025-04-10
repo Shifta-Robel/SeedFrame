@@ -16,7 +16,7 @@ pub struct XaiCompletionModel {
 }
 
 impl XaiCompletionModel {
-    pub fn new(api_key: String, api_url: String, model: String) -> Self {
+    #[must_use] pub fn new(api_key: String, api_url: String, model: String) -> Self {
         Self {
             api_key,
             client: reqwest::Client::new(),

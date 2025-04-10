@@ -53,7 +53,7 @@ impl FileOnceLoaderBuilder {
         let documents = load_initial(&self.evaluated);
         if documents.is_empty() {
             error!("No documents matched the provided glob patterns");
-            Err(FileLoaderError::NoMatchingDocuments)?
+            Err(FileLoaderError::NoMatchingDocuments)?;
         };
         let (tx, _rx) = broadcast::channel(documents.len());
         debug!(
@@ -100,7 +100,7 @@ impl Loader for FileOnceLoader {
                 if let Err(e) = self.tx.send(doc.clone()) {
                     error!("Loader failed to send document: {} to subscribers", e.0.id);
                 } else {
-                    sent_docs_count += 1
+                    sent_docs_count += 1;
                 }
             }
             info!(
@@ -147,7 +147,7 @@ mod tests {
             "*.txt *.pdf",
         ]
         .iter()
-        .map(|p| p.to_string())
+        .map(|p| (*p).to_string())
         .collect::<Vec<String>>();
         let result = FileOnceLoaderBuilder::new(invalid_patterns);
         assert!(result.is_err());

@@ -140,19 +140,19 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
     }
 
     /// Execute the tool calls if the LLM responds with a Tool call request, `true` by default
-    pub fn execute_tools(mut self, execute: bool) -> Self {
+    #[must_use] pub fn execute_tools(mut self, execute: bool) -> Self {
         self.execute_tools = execute;
         self
     }
 
     /// Wether to send any tool definitions with the prompt, `true` by default
-    pub fn with_tools(mut self, no_tools: bool) -> Self {
+    #[must_use] pub fn with_tools(mut self, no_tools: bool) -> Self {
         self.with_tools = no_tools;
         self
     }
 
     /// Create a `Message::User` with the tool reponses and append it to the client history, `false` by default
-    pub fn append_tool_response(mut self, append: bool) -> Self {
+    #[must_use] pub fn append_tool_response(mut self, append: bool) -> Self {
         self.append_tool_response = append;
         self
     }
@@ -160,14 +160,14 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
     /// Wether to retrieve and append the context to the prompt, true by default.
     /// If true, the client's vector store will get looked up for the top matches to the prompt and
     /// the context will get appended to the prompt before being sent.
-    pub fn with_context(mut self, append_context: bool) -> Self {
+    #[must_use] pub fn with_context(mut self, append_context: bool) -> Self {
         self.with_context = append_context;
         self
     }
 
     /// Prompt the LLM with a custom history, and get a response.
     /// Response won't be stored in the client's history
-    pub fn one_shot(mut self, one_shot: bool, history: Option<MessageHistory>) -> Self {
+    #[must_use] pub fn one_shot(mut self, one_shot: bool, history: Option<MessageHistory>) -> Self {
         self.one_shot = (one_shot, history);
         self
     }
@@ -254,14 +254,14 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
             } = response.clone()
             {
                 if self.one_shot.0 {
-                    self.client.history.push(response)
+                    self.client.history.push(response);
                 }
                 let values = self.client.run_tools(Some(&calls)).await?;
                 if self.one_shot.0 {
                     self.client.history.pop();
                 }
                 response = Message::User {
-                    content: "".to_owned(),
+                    content: String::new(),
                     tool_responses: Some(values.clone()),
                 };
                 if self.append_tool_response && !self.one_shot.0 {
@@ -304,7 +304,7 @@ impl<M: CompletionModel + Send> Client<M> {
         self.history = history;
     }
 
-    pub fn export_history(&self) -> &MessageHistory {
+    #[must_use] pub fn export_history(&self) -> &MessageHistory {
         &self.history
     }
 
@@ -408,7 +408,7 @@ impl<M: CompletionModel + Send> Client<M> {
         };
 
         let message_with_context = Message::User {
-            content: format!("{}{}", prompt, context),
+            content: format!("{prompt}{context}"),
             tool_responses: None,
         };
 
@@ -431,7 +431,7 @@ impl<M: CompletionModel + Send> Client<M> {
             return Ok(None);
         }
         let mut context = String::new();
-        for embedder in self.embedders.iter() {
+        for embedder in &self.embedders {
             let query_results = embedder.query(prompt, DEFAULT_TOP_N).await?;
             if query_results.is_empty() {
                 return Ok(None);
@@ -476,11 +476,11 @@ fn process_json_value(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::Object(obj) => {
             let fields_to_remove = ["$schema", "format", "title", "minimum"];
-            fields_to_remove.iter().for_each(|&f| {
+            for &f in &fields_to_remove {
                 if obj.get(f).map_or(false, |v| v.is_string() || v.is_number()) {
                     obj.remove(f);
                 }
-            });
+            }
             if let Some(v) = obj.get("oneOf").cloned() {
                 obj.remove("oneOf");
                 obj.insert("anyOf".to_string(), v);
@@ -521,7 +521,7 @@ where
     S: Serializer,
 {
     let combined_content = match tool_calls {
-        Some(calls) => &format!("{} {:?}", content, calls),
+        Some(calls) => &format!("{content} {calls:?}"),
         None => content,
     };
     serializer.serialize_newtype_struct("assistant", &combined_content)

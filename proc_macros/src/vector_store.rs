@@ -143,7 +143,7 @@ fn generate_builder(
 
 fn option_expr(opt: Option<String>) -> syn::Expr {
     let expr = if let Some(v) = opt {
-        &format!("Some(\"{}\".to_string())", v)
+        &format!("Some(\"{v}\".to_string())")
     } else {
         "None"
     };

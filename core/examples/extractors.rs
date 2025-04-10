@@ -39,7 +39,7 @@ async fn main() -> Result<(), seedframe::error::Error> {
     let person = client.prompt(person_text)
         .extract::<Person>()
         .await?;
-    println!("Extracted Person:\n{:#?}\n", person);
+    println!("Extracted Person:\n{person:#?}\n");
 
     let meeting_text = "We have a team meeting scheduled for 2026-2-15 at 11:30. \
                        Purpose is quarterly planning. Attendees include: \
@@ -49,7 +49,7 @@ async fn main() -> Result<(), seedframe::error::Error> {
     let meeting = client.prompt(meeting_text)
         .extract::<MeetingDetails>()
         .await?;
-    println!("Extracted Meeting:\n{:#?}\n", meeting);
+    println!("Extracted Meeting:\n{meeting:#?}\n");
 
     Ok(())
 }

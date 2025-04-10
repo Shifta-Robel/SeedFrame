@@ -35,10 +35,7 @@ impl VectorStore for InMemoryVectorStore {
             .get(&id)
             .ok_or(VectorStoreError::EmbeddingNotFound)
             .cloned();
-        match res {
-            Ok(_) => debug!("Found embedding for document"),
-            Err(_) => error!("Failed to find embedding for document"),
-        };
+        if res.is_ok() { debug!("Found embedding for document") } else { error!("Failed to find embedding for document") };
         res
     }
 
@@ -157,7 +154,7 @@ mod tests {
         // test removing embedding
         let empty_embedding = Embedding {
             id: "id".to_string(),
-            raw_data: "".to_string(),
+            raw_data: String::new(),
             embedded_data: vec![],
         };
         let result = store.store(empty_embedding).await;

@@ -70,7 +70,7 @@ impl FileUpdatingLoaderBuilder {
     /// # Returns
     /// * `FileUpdatingLoader` - A new `FileUpdatingLoader` instance.
     pub fn build(self) -> FileUpdatingLoader {
-        let files = resolve_input_to_files(self.glob_patterns.iter().map(|s| s.as_str()).collect())
+        let files = resolve_input_to_files(self.glob_patterns.iter().map(std::string::String::as_str).collect())
             .unwrap();
         let capacity = if files.is_empty() {
             DEFAULT_CHANNEL_CAPACITY
@@ -122,13 +122,13 @@ impl Loader for FileUpdatingLoader {
             let initial_docs = load_initial(&self.patterns);
             let mut sent_docs_count = 0;
             let total_docs_count = initial_docs.len();
-            initial_docs.into_iter().for_each(|doc| {
+            for doc in initial_docs {
                 if let Err(e) = self.tx.send(doc) {
                     error!("Loader failed to send document: {} to subscribers", e.0.id);
                 } else {
                     sent_docs_count += 1;
                 }
-            });
+            }
             info!(
                 "Loader sent {} of {} initial documents to subscribers",
                 sent_docs_count, total_docs_count
@@ -169,7 +169,7 @@ impl Loader for FileUpdatingLoader {
                 loop {
                     let now = Instant::now();
                     if now.duration_since(last_event_time) >= debounce_duration {
-                        for event in evt_rx.iter() {
+                        for event in &evt_rx {
                             let event = event.unwrap();
                             let out = process_event(&event, &pc);
                             if out.is_none() {
@@ -199,7 +199,7 @@ fn document_for_event(path: &str, et: EventType) -> Document {
     let file = std::path::Path::new(&path);
     let data = match et {
         EventType::Modify | EventType::Create => parse_file(file).unwrap(),
-        EventType::Delete => "".to_string(),
+        EventType::Delete => String::new(),
     };
     debug!("Created document for {} with event type {:?}", path, et);
     Document {
@@ -243,7 +243,7 @@ mod tests {
             paths: vec![PathBuf::from("test.txt")],
             attrs: Default::default(),
         };
-        let result = process_event(&event, &vec![pattern]);
+        let result = process_event(&event, &[pattern]);
         assert!(result.is_some());
         let (path, et) = result.unwrap();
         assert_eq!(path, "test.txt");
@@ -258,7 +258,7 @@ mod tests {
             paths: vec![PathBuf::from("test.txt")],
             attrs: Default::default(),
         };
-        let result = process_event(&event, &vec![pattern]);
+        let result = process_event(&event, &[pattern]);
         assert!(result.is_none());
     }
 

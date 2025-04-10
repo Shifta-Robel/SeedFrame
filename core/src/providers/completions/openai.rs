@@ -15,7 +15,7 @@ pub struct OpenAICompletionModel {
 }
 
 impl OpenAICompletionModel {
-    pub fn new(api_key: String, api_url: String, model: String) -> Self {
+    #[must_use] pub fn new(api_key: String, api_url: String, model: String) -> Self {
         Self {
             api_key,
             client: reqwest::Client::new(),
@@ -334,7 +334,7 @@ For this test to be considered successful, reply with "okay" without the quotes,
                 content: _,
                 tool_calls: Some(_)
             }
-        ))
+        ));
     }
 
     fn get_tools() -> ToolSet {

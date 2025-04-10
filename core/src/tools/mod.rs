@@ -73,7 +73,7 @@ impl ToolSet {
     }
 
     pub fn add_tool(&mut self, tool: Box<dyn Tool>) {
-        self.0.push(tool)
+        self.0.push(tool);
     }
 
     pub fn remove_tool(&mut self, name: &str) -> Result<(), ToolSetError> {
@@ -86,7 +86,7 @@ impl ToolSet {
         Ok(())
     }
 
-    pub fn list_tools(&self) -> Vec<Box<dyn Tool>> {
+    #[must_use] pub fn list_tools(&self) -> Vec<Box<dyn Tool>> {
         todo!()
     }
 
@@ -115,7 +115,7 @@ pub struct ToolArg {
 }
 
 impl ToolArg {
-    pub fn new<T: JsonSchema + Serialize>(name: &str, description: &str) -> Self {
+    #[must_use] pub fn new<T: JsonSchema + Serialize>(name: &str, description: &str) -> Self {
         let settings = SchemaSettings::default().with(|s| {
             s.inline_subschemas = true;
         });
@@ -143,11 +143,11 @@ fn process_json_value(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::Object(obj) => {
             let fields_to_remove = ["$schema", "format", "title", "minimum"];
-            fields_to_remove.iter().for_each(|&f| {
+            for &f in &fields_to_remove {
                 if obj.get(f).map_or(false, |v| v.is_string() || v.is_number()) {
                     obj.remove(f);
                 }
-            });
+            }
             if let Some(v) = obj.get("oneOf").cloned() {
                 obj.remove("oneOf");
                 obj.insert("anyOf".to_string(), v);
@@ -185,7 +185,7 @@ pub struct ToolResponse {
     pub content: serde_json::Value,
 }
 
-pub fn build_parameters_schema(args: &[ToolArg]) -> Value {
+#[must_use] pub fn build_parameters_schema(args: &[ToolArg]) -> Value {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
 

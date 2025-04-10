@@ -9,7 +9,7 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn new(id: String, data: String) -> Self {
+    #[must_use] pub fn new(id: String, data: String) -> Self {
         Self { id, data }
     }
 }

@@ -240,7 +240,7 @@ fn resolve_tools(tools: &[String]) -> Vec<proc_macro2::Ident> {
         .map(|tool| {
             let mut parts: Vec<&str> = tool.split("::").collect();
             let last_part = parts.pop().unwrap();
-            let name = format!("__SF_TOOL_{}__", last_part);
+            let name = format!("__SF_TOOL_{last_part}__");
             parts.push(&name);
             proc_macro2::Ident::new(&parts.join("::"), proc_macro2::Span::call_site())
         })

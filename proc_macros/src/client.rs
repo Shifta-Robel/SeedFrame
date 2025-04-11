@@ -18,7 +18,7 @@ struct ClientConfig {
     #[darling(default)]
     external: Option<String>,
     #[darling(default)]
-    api_key: Option<String>,
+    api_key_var: Option<String>,
     #[darling(default)]
     url: Option<String>
 }
@@ -27,7 +27,7 @@ struct ClientConfig {
 pub(crate) enum ClientMacroError {
     #[error("Unknown completion model provider: '{0}'. valid options are openai, deepseek, xai")]
     UnknownCompletionModel(String),
-    #[error("Failed to parse client macro: ")]
+    #[error(transparent)]
     ParseError(#[from] darling::Error),
     #[error("Unsupported argument '{0}' for '{1}' client type")]
     UnsupportedArgument(String, String),
@@ -131,8 +131,119 @@ impl FromStr for BuiltInProviderType {
     }
 }
 
+pub(crate) fn client_impl(
+    args: TokenStream,
+    input: TokenStream,
+) -> Result<TokenStream, ClientMacroError> {
+    let attr_args: Vec<NestedMeta> = match NestedMeta::parse_meta_list(args) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(darling::Error::from(e).into());
+        }
+    };
+    let input: syn::ItemStruct = match syn::parse2::<syn::ItemStruct>(input) {
+        Ok(is) => is,
+        Err(e) => {
+            return Err(darling::Error::from(e).into());
+        }
+    };
+
+    let config: ClientConfig = match ClientConfig::from_list(&attr_args) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(e.into());
+        }
+    };
+
+    validate_config(&config)?;
+    let (struct_ident, struct_vis) = (&input.ident, &input.vis);
+    let embedder_instances = parse_embedders(&input)?;
+
+    let tool_execution_mode = if let Some(txm) = &config.clone().execution_mode {
+        ExecutionModeType::from_str(txm)?
+    } else {
+        ExecutionModeType::FailEarly
+    }
+    .to_string();
+    let tool_execution_mode = syn::Type::from_string(&tool_execution_mode)?;
+    let tool_names: Vec<proc_macro2::Ident> =
+        parse_tools(&config.clone().tools.map(|v| v.0).unwrap_or_default());
+    let tool_set = quote! { seedframe::tools::ToolSet(vec![#(Box::new(#tool_names::new())),*], #tool_execution_mode) };
+
+    let kind: syn::Type;
+    let model_init = match parse_completion_provider(&config)? {
+        ProviderType::BuiltIn(t) => {
+            let model = config.model.as_ref().unwrap().to_string();
+            let api_key = if let Some(key) = config.api_key_var {
+                quote!{Some(#key.to_string())}
+            }else {quote!{None}};
+            let url = if let Some(url) = config.url{
+                quote!{Some(#url.to_string())}
+            }else {quote!{None}};
+            kind = t.clone();
+            quote! {let model = #t::new(#api_key, #url, String::from(#model));}
+        },
+        ProviderType::External(t) => {
+            kind = t.clone();
+            quote! {let model = #t::new();}
+        }
+    };
+
+    Ok(
+        quote! {
+            #struct_vis struct #struct_ident;
+            
+            impl #struct_ident{
+                #struct_vis async fn build(preamble: impl AsRef<str>) -> seedframe::completion::Client<#kind> {
+                    use seedframe::completion::CompletionModel;
+                    #model_init
+                    model.build_client(
+                        preamble,
+                        vec![#embedder_instances],
+                        #tool_set
+                    )
+                }
+            }
+
+        }
+    )
+}
 fn validate_config(config: &ClientConfig) -> Result<(), ClientMacroError> {
+    if config.provider.is_some() && config.external.is_some() {
+        return Err(ClientMacroError::ParseError(darling::Error::custom(
+                    "Only one of the attributes `provider` and `external` allowed at a time!")));
+    }
+
+    if config.provider.is_none() && config.external.is_none() {
+        return Err(ClientMacroError::ParseError(darling::Error::custom(
+                    "Expected one of the attributes `provider` or `external`!")));
+    }
+
+    if let Some(_) = config.provider {
+        ensure_required_field(&config.model, "model", "builtlin")?;
+    } else {
+        let unsupported_args = [
+            ("api_key_var", config.api_key_var.is_some()),
+            ("url", config.url.is_some()),
+            ("model", config.model.is_some()),
+        ];
+
+        for (arg, is_present) in unsupported_args {
+            if is_present {
+                return Err(ClientMacroError::UnsupportedArgument(arg.to_string(), "external".to_string()));
+            }
+        }
+    }
+
     Ok(())
+}
+
+fn ensure_required_field<T>(field: &Option<T>, name: &str, default: &str) -> Result<(), ClientMacroError> {
+    if field.is_none() {
+        Err(ClientMacroError::MissingArgument(name.to_string(), default.to_string()))
+    } else {
+        Ok(())
+    }
 }
 
 enum ProviderType {
@@ -203,75 +314,4 @@ fn parse_embedders(
         });
     }
     Ok(embedder_instances)
-}
-
-pub(crate) fn client_impl(
-    args: TokenStream,
-    input: TokenStream,
-) -> Result<TokenStream, ClientMacroError> {
-    let attr_args: Vec<NestedMeta> = match NestedMeta::parse_meta_list(args) {
-        Ok(v) => v,
-        Err(e) => {
-            return Err(darling::Error::from(e).into());
-        }
-    };
-    let input: syn::ItemStruct = match syn::parse2::<syn::ItemStruct>(input) {
-        Ok(is) => is,
-        Err(e) => {
-            return Err(darling::Error::from(e).into());
-        }
-    };
-
-    let config: ClientConfig = match ClientConfig::from_list(&attr_args) {
-        Ok(v) => v,
-        Err(e) => {
-            return Err(e.into());
-        }
-    };
-
-    let (struct_ident, struct_vis) = (&input.ident, &input.vis);
-    let embedder_instances = parse_embedders(&input)?;
-
-    let tool_execution_mode = if let Some(txm) = &config.clone().execution_mode {
-        ExecutionModeType::from_str(txm)?
-    } else {
-        ExecutionModeType::FailEarly
-    }
-    .to_string();
-    let tool_execution_mode = syn::Type::from_string(&tool_execution_mode)?;
-    let tool_names: Vec<proc_macro2::Ident> =
-        parse_tools(&config.clone().tools.map(|v| v.0).unwrap_or_default());
-    let tool_set = quote! { seedframe::tools::ToolSet(vec![#(Box::new(#tool_names::new())),*], #tool_execution_mode) };
-
-    let model = config.model.as_ref().unwrap().to_string();
-    let kind: syn::Type;
-    let model_init = match parse_completion_provider(&config)? {
-        ProviderType::BuiltIn(t) => {
-            kind = t.clone();
-            quote! {let model = #t::new(None, None, String::from(#model));}
-        },
-        ProviderType::External(t) => {
-            kind = t.clone();
-            quote! {let model = #t::new();}
-        }
-    };
-
-    Ok(
-        quote! {
-            #struct_vis struct #struct_ident;
-            
-            impl #struct_ident{
-                #struct_vis async fn build(preamble: impl AsRef<str>) -> seedframe::completion::Client<#kind> {
-                    use seedframe::completion::CompletionModel;
-                    #model_init
-                    model.build_client(
-                        preamble,
-                        vec![#embedder_instances],
-                        #tool_set
-                    )
-                }
-            }
-
-        }
-    )
 }

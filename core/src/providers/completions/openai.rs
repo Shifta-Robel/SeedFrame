@@ -21,7 +21,8 @@ pub struct OpenAICompletionModel {
 
 impl OpenAICompletionModel {
     #[must_use] pub fn new(api_key: Option<String>, api_url: Option<String>, model: String) -> Self {
-        let api_key = api_key.unwrap_or(std::env::var(API_KEY_ENV_VAR).unwrap());
+        let api_env_var = api_key.unwrap_or(API_KEY_ENV_VAR.to_string());
+        let api_key = std::env::var(api_env_var).unwrap();
         let api_url = api_url.unwrap_or(URL.to_string());
         Self {
             api_key,

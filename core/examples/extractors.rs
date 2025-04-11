@@ -33,7 +33,7 @@ struct MeetingDetails {
 
 #[tokio::main]
 async fn main() -> Result<(), seedframe::error::Error> {
-    let mut client = ExtractorClient::build("You are a helpful assistant".to_string()).await;
+    let mut client = ExtractorClient::build("You are a helpful assistant").await;
 
     let person_text = "My colleague John Doe is 28 years old. He works as a software engineer and enjoys hiking, reading, and playing chess, his email is johhnydoep@mail.com";
     let person = client.prompt(person_text)

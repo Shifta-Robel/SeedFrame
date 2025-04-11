@@ -75,6 +75,14 @@ const DEFAULT_TOP_N: usize = 1;
 
 #[async_trait]
 pub trait CompletionModel: Send {
+    /// Build the completion model
+    fn build_client(
+        self,
+        preamble: impl AsRef<str>,
+        embedder_instances: Vec<crate::embeddings::Embedder>,
+        tools: ToolSet,
+    ) -> Client<impl CompletionModel>;
+
     /// Send message to LLM and get a reply
     async fn send(
         &mut self,
@@ -277,7 +285,7 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
 impl<M: CompletionModel + Send> Client<M> {
     pub fn new(
         completion_model: M,
-        preamble: String,
+        preamble: impl AsRef<str>,
         temperature: f64,
         max_tokens: usize,
         embedders: Vec<Embedder>,
@@ -285,7 +293,7 @@ impl<M: CompletionModel + Send> Client<M> {
     ) -> Self {
         Self {
             completion_model: Arc::new(RwLock::new(completion_model)),
-            history: vec![Message::Preamble(preamble)],
+            history: vec![Message::Preamble(String::from(preamble.as_ref()))],
             embedders,
             tools: Box::new(tools),
             temperature,

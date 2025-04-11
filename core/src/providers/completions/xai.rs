@@ -1,12 +1,17 @@
 use crate::completion::{
-    serialize_assistant, serialize_user, CompletionError, CompletionModel, Message, MessageHistory,
-    TokenUsage,
+    serialize_assistant, serialize_user, Client, CompletionError, CompletionModel, Message, MessageHistory, TokenUsage
 };
+use crate::embeddings::Embedder;
 use crate::tools::{ToolCall, ToolResponse, ToolSet};
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
+
+const API_KEY_ENV_VAR: &str = "SEEDFRAME_XAI_API_KEY";
+const URL: &str = "https://api.x.ai/v1/chat/completions";
+const DEFAULT_TEMP: f64 = 1.0;
+const DEFAULT_TOKENS: usize = 2400;
 
 pub struct XaiCompletionModel {
     api_key: String,
@@ -16,7 +21,9 @@ pub struct XaiCompletionModel {
 }
 
 impl XaiCompletionModel {
-    #[must_use] pub fn new(api_key: String, api_url: String, model: String) -> Self {
+    #[must_use] pub fn new(api_key: Option<String>, api_url: Option<String>, model: String) -> Self {
+        let api_key = api_key.unwrap_or(std::env::var(API_KEY_ENV_VAR).unwrap());
+        let api_url = api_url.unwrap_or(URL.to_string());
         Self {
             api_key,
             client: reqwest::Client::new(),
@@ -65,8 +72,24 @@ impl From<Message> for XaiMessage {
     }
 }
 
+#[allow(refining_impl_trait)]
 #[async_trait]
 impl CompletionModel for XaiCompletionModel {
+    fn build_client(
+        self,
+        preamble: impl AsRef<str>,
+        embedder_instances: Vec<Embedder>,
+        tools: ToolSet,
+    ) -> Client<impl CompletionModel> {
+        Client::new(
+            self,
+            preamble,
+            DEFAULT_TEMP,
+            DEFAULT_TOKENS,
+            embedder_instances,
+            tools
+        )
+    }
     async fn send(
         &mut self,
         message: Message,
@@ -185,11 +208,9 @@ mod tests {
     #[ignore]
     async fn simple_xai_completion_request() {
         tracing_subscriber::fmt().init();
-        let api_key = std::env::var("SEEDFRAME_TEST_XAI_KEY").unwrap().to_string();
-        let api_url = "https://api.x.ai/v1/chat/completions".to_string();
         let model = "grok-2-latest".to_string();
 
-        let mut xai_completion_model = XaiCompletionModel::new(api_key, api_url, model);
+        let mut xai_completion_model = XaiCompletionModel::new(None, None, model);
 
         let response = xai_completion_model
             .send(

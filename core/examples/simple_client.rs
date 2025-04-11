@@ -23,7 +23,7 @@ struct MyClient {
 #[tokio::main]
 async fn main() {
     let mut c = MyClient::build(
-        "Respond with the definition and language of origin for the word the user prompts you with, you'll be given a context to use for the words, if you cant get the meaning for the word from the context reply with a \"I dont know\"".to_string(),
+        "Respond with the definition and language of origin for the word the user prompts you with, you'll be given a context to use for the words, if you cant get the meaning for the word from the context reply with a \"I dont know\"",
     )
     .await;
     // delay for the vector store to finish upserting the loaded resource before the first prompt

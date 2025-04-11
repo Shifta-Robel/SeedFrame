@@ -35,7 +35,7 @@ struct AppState {
 
 #[tokio::main]
 async fn main() -> Result<(), seedframe::error::Error> {
-    let mut client = SimpleClient::build("You are a helpful assistant".to_string())
+    let mut client = SimpleClient::build("You are a helpful assistant")
         .await
         .with_state(AppState { some_number: 3 })?;
 

@@ -1,12 +1,17 @@
 use crate::completion::{
-    serialize_assistant, serialize_user, CompletionError, CompletionModel, Message, MessageHistory,
-    TokenUsage,
+    serialize_assistant, serialize_user, Client, CompletionError, CompletionModel, Message, MessageHistory, TokenUsage
 };
+use crate::embeddings::Embedder;
 use crate::tools::{ToolCall, ToolResponse, ToolSet};
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
+
+const API_KEY_ENV_VAR: &str = "SEEDFRAME_DEEPSEEK_API_KEY";
+const URL: &str = "https://api.deepseek.com/chat/completions";
+const DEFAULT_TEMP: f64 = 1.0;
+const DEFAULT_TOKENS: usize = 2400;
 
 pub struct DeepseekCompletionModel {
     api_key: String,
@@ -16,7 +21,9 @@ pub struct DeepseekCompletionModel {
 }
 
 impl DeepseekCompletionModel {
-    #[must_use] pub fn new(api_key: String, api_url: String, model: String) -> Self {
+    #[must_use] pub fn new(api_key: Option<String>, api_url: Option<String>, model: String) -> Self {
+        let api_key = api_key.unwrap_or(std::env::var(API_KEY_ENV_VAR).unwrap());
+        let api_url = api_url.unwrap_or(URL.to_string());
         Self {
             api_key,
             client: reqwest::Client::new(),
@@ -65,8 +72,24 @@ impl From<Message> for DeepseekMessage {
     }
 }
 
+#[allow(refining_impl_trait)]
 #[async_trait]
 impl CompletionModel for DeepseekCompletionModel {
+    fn build_client(
+        self,
+        preamble: impl AsRef<str>,
+        embedder_instances: Vec<Embedder>,
+        tools: ToolSet,
+    ) -> Client<impl CompletionModel> {
+        Client::new(
+            self,
+            preamble,
+            DEFAULT_TEMP,
+            DEFAULT_TOKENS,
+            embedder_instances,
+            tools
+        )
+    }
     async fn send(
         &mut self,
         message: Message,
@@ -188,13 +211,9 @@ mod tests {
     #[ignore]
     async fn simple_deepseek_completion_request() {
         tracing_subscriber::fmt().init();
-        let api_key = std::env::var("SEEDFRAME_TEST_DEEPSEEK_KEY")
-            .unwrap()
-            .to_string();
-        let api_url = "https://api.deepseek.com/chat/completions".to_string();
         let model = "deepseek".to_string();
 
-        let mut deepseek_completion_model = DeepseekCompletionModel::new(api_key, api_url, model);
+        let mut deepseek_completion_model = DeepseekCompletionModel::new(None, None, model);
 
         let response = deepseek_completion_model
             .send(

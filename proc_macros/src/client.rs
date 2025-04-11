@@ -1,19 +1,42 @@
 use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::TokenStream;
 use quote::quote;
-use std::fmt::Display;
-use syn::{parse::Parser, Meta};
+use std::{fmt::Display, str::FromStr};
+use syn::{parse::Parser, ItemStruct, Meta};
 use thiserror::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct ClientConfig {
-    provider: String,
+    #[darling(default)]
+    provider: Option<String>,
     #[darling(default)]
     model: Option<String>,
     #[darling(default)]
     tools: Option<ToolNames>,
     #[darling(default)]
     execution_mode: Option<String>,
+    #[darling(default)]
+    external: Option<String>,
+    #[darling(default)]
+    api_key: Option<String>,
+    #[darling(default)]
+    url: Option<String>
+}
+
+#[derive(Debug, Error)]
+pub(crate) enum ClientMacroError {
+    #[error("Unknown completion model provider: '{0}'. valid options are openai, deepseek, xai")]
+    UnknownCompletionModel(String),
+    #[error("Failed to parse client macro: ")]
+    ParseError(#[from] darling::Error),
+    #[error("Unsupported argument '{0}' for '{1}' client type")]
+    UnsupportedArgument(String, String),
+    #[error("Missing required argument '{0}' for '{1}' client type")]
+    MissingArgument(String, String),
+    #[error("Unrecognized attribute {0}")]
+    UnrecognizedAttribute(String),
+    #[error("Unknown execution mode : '{0}'. valid options are fail_early or best_effort")]
+    UnknownExecutionMode(String),
 }
 
 #[derive(Clone, Debug)]
@@ -37,75 +60,6 @@ impl FromMeta for ToolNames {
         }
 
         Ok(ToolNames(list))
-    }
-}
-
-#[derive(Debug, Error)]
-pub(crate) enum ClientMacroError {
-    #[error("Unknown completion model provider: '{0}'. valid options are openai, deepseek, xai")]
-    UnknownCompletionModel(String),
-    #[error("Failed to parse client macro: ")]
-    ParseError(#[from] darling::Error),
-    #[error("Unsupported argument '{0}' for '{1}' client type")]
-    UnsupportedArgument(String, String),
-    #[error("Missing required argument '{0}' for '{1}' client type")]
-    MissingArgument(String, String),
-    #[error("Unrecognized attribute {0}")]
-    UnrecognizedAttribute(String),
-    #[error("Unknown execution mode : '{0}'. valid options are fail_early or best_effort")]
-    UnknownExecutionMode(String),
-}
-
-#[derive(Debug, Clone)]
-enum BuiltInProviderType {
-    OpenAICompletionModel,
-    DeepseekCompletionModel,
-    XaiCompletionModel,
-}
-
-impl Display for BuiltInProviderType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::OpenAICompletionModel =>
-                    "seedframe::providers::completions::openai::OpenAICompletionModel",
-                Self::DeepseekCompletionModel =>
-                    "seedframe::providers::completions::deepseek::DeepseekCompletionModel",
-                Self::XaiCompletionModel =>
-                    "seedframe::providers::completions::xai::XaiCompletionModel",
-            }
-        )
-    }
-}
-
-impl BuiltInProviderType {
-    fn from_str(provider: &str) -> Result<Self, ClientMacroError> {
-        match provider {
-            "openai" => Ok(Self::OpenAICompletionModel),
-            "deepseek" => Ok(Self::DeepseekCompletionModel),
-            "xai" => Ok(Self::XaiCompletionModel),
-            unknown => Err(ClientMacroError::UnknownCompletionModel(
-                unknown.to_string(),
-            )),
-        }
-    }
-
-    fn required_args(&self) -> &'static [&'static str] {
-        match self {
-            Self::OpenAICompletionModel => &["model"],
-            Self::DeepseekCompletionModel => &["model"],
-            Self::XaiCompletionModel => &["model"],
-        }
-    }
-
-    fn supported_args(&self) -> &'static [&'static str] {
-        match self {
-            Self::OpenAICompletionModel => &["model"],
-            Self::DeepseekCompletionModel => &["model"],
-            Self::XaiCompletionModel => &["model"],
-        }
     }
 }
 
@@ -139,102 +93,70 @@ impl ExecutionModeType {
     }
 }
 
-fn validate_config(
-    config: &ClientConfig,
-    provider_type: &BuiltInProviderType,
-) -> Result<(), ClientMacroError> {
-    let required = provider_type.required_args();
-    let supported = provider_type.supported_args();
-    let check_arg = |name: &str, value: &Option<String>| {
-        if value.is_none() && required.contains(&name) {
-            Err(ClientMacroError::MissingArgument(
-                name.to_string(),
-                provider_type.to_string(),
-            ))
-        } else if value.is_some() && !supported.contains(&name) {
-            Err(ClientMacroError::UnsupportedArgument(
-                name.to_string(),
-                provider_type.to_string(),
-            ))
-        } else {
-            Ok(())
-        }
-    };
-    check_arg("model", &config.model)?;
-    Ok(())
+#[derive(Debug, Clone)]
+enum BuiltInProviderType {
+    OpenAICompletionModel,
+    DeepseekCompletionModel,
+    XaiCompletionModel,
 }
-fn generate_builder(
-    provider_type: &BuiltInProviderType,
-    embedder_types: &[syn::Type],
-    config: &ClientConfig,
-    vis: &syn::Visibility,
-    tool_set: &TokenStream,
-) -> TokenStream {
-    let mut embedder_instances = quote! {};
-    for embedder_type in embedder_types {
-        embedder_instances.extend(quote! {
-            #embedder_type::build().await.inner,
-        });
+
+impl Display for BuiltInProviderType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::OpenAICompletionModel =>
+                    "seedframe::providers::completions::openai::OpenAICompletionModel",
+                Self::DeepseekCompletionModel =>
+                    "seedframe::providers::completions::deepseek::DeepseekCompletionModel",
+                Self::XaiCompletionModel =>
+                    "seedframe::providers::completions::xai::XaiCompletionModel",
+            }
+        )
     }
-    match provider_type {
-        BuiltInProviderType::OpenAICompletionModel => {
-            let model = config.model.as_ref().unwrap().to_string();
-            let completion_model_init = quote! {
-                ::seedframe::providers::completions::openai::OpenAICompletionModel::new(std::env::var("SEEDFRAME_OPENAI_API_KEY").unwrap().to_string(), "https://api.openai.com/v1/chat/completions".to_string(), #model.to_string())
-            };
-            quote! {
-                #vis async fn build(preamble: String) -> seedframe::completion::Client<::seedframe::providers::completions::openai::OpenAICompletionModel> {
-                    seedframe::completion::Client::new(
-                        #completion_model_init,
-                        preamble,
-                        1.0,
-                        2400,
-                        vec![#embedder_instances],
-                        #tool_set
-                    )
-                }
-            }
-        }
-        BuiltInProviderType::DeepseekCompletionModel => {
-            let model = config.model.as_ref().unwrap().to_string();
-            let completion_model_init = quote! {
-                ::seedframe::providers::completions::deepseek::DeepseekCompletionModel::new(std::env::var("SEEDFRAME_DEEPSEEK_API_KEY").unwrap().to_string(), "https://api.deepseek.com/chat/completions".to_string(), #model.to_string())
-            };
-            quote! {
-                #vis async fn build(preamble: String) -> seedframe::completions::Client<::seedframe::providers::completions::deepseek::DeepseekCompletionModel> {
-                    seedframe::completion::Client::new(
-                        #completion_model_init,
-                        preamble,
-                        1.0,
-                        2400,
-                        vec![#embedder_instances],
-                        #tool_set
-                    )
-                }
-            }
-        }
-        BuiltInProviderType::XaiCompletionModel => {
-            let model = config.model.as_ref().unwrap().to_string();
-            let completion_model_init = quote! {
-                ::seedframe::providers::completions::xai::XaiCompletionModel::new(std::env::var("SEEDFRAME_XAI_API_KEY").unwrap().to_string(), "https://api.x.ai/v1/chat/completions".to_string(), #model.to_string())
-            };
-            quote! {
-                #vis async fn build(preamble: String) -> seedframe::completions::Client<::seedframe::providers::completions::xai::XaiCompletionModel> {
-                    seedframe::completion::Client::new(
-                        #completion_model_init,
-                        preamble,
-                        1.0,
-                        2400,
-                        vec![#embedder_instances],
-                        #tool_set
-                    )
-                }
-            }
+}
+
+impl FromStr for BuiltInProviderType {
+    type Err = ClientMacroError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "openai" => Ok(Self::OpenAICompletionModel),
+            "deepseek" => Ok(Self::DeepseekCompletionModel),
+            "xai" => Ok(Self::XaiCompletionModel),
+            unknown => Err(ClientMacroError::UnknownCompletionModel(
+                unknown.to_string(),
+            )),
         }
     }
 }
 
-fn resolve_tools(tools: &[String]) -> Vec<proc_macro2::Ident> {
+fn validate_config(config: &ClientConfig) -> Result<(), ClientMacroError> {
+    Ok(())
+}
+
+enum ProviderType {
+    BuiltIn(syn::Type),
+    External(syn::Type)
+}
+
+fn parse_completion_provider(config: &ClientConfig) -> Result<ProviderType, ClientMacroError> {
+    validate_config(config)?;
+    let type_str = if let Some(p) = &config.provider {
+        BuiltInProviderType::from_str(&p)?.to_string()
+    }else {
+        config.external.clone().unwrap()
+    };
+    let p_type = syn::parse_str(&type_str).map_err(|e| ClientMacroError::ParseError(darling::Error::from(e)))?;
+
+    if config.provider.is_some() {
+        Ok(ProviderType::BuiltIn(p_type))
+    }else {
+        Ok(ProviderType::External(p_type))
+    }
+}
+
+fn parse_tools(tools: &[String]) -> Vec<proc_macro2::Ident> {
     tools
         .iter()
         .map(|tool| {
@@ -245,6 +167,42 @@ fn resolve_tools(tools: &[String]) -> Vec<proc_macro2::Ident> {
             proc_macro2::Ident::new(&parts.join("::"), proc_macro2::Span::call_site())
         })
         .collect()
+}
+
+fn parse_embedders(
+    input: &ItemStruct,
+) ->Result<TokenStream, ClientMacroError> {
+    let embedder_types = {
+        let mut embedders = Vec::new();
+        for f in input.clone().fields {
+            'loop_attrs: for a in &f.attrs {
+                match &a.meta {
+                    syn::Meta::Path(p) => {
+                        let ident = p
+                            .get_ident()
+                            .ok_or(ClientMacroError::UnrecognizedAttribute(format!("{p:?}")))?;
+
+                        if ident == "embedder" {
+                            embedders.push(f.ty.clone());
+                        }
+                    }
+                    _ => {
+                        continue 'loop_attrs;
+                    }
+                }
+            }
+        }
+
+        embedders
+    };
+
+    let mut embedder_instances = quote! {};
+    for embedder_type in embedder_types {
+        embedder_instances.extend(quote! {
+            #embedder_type::build().await.inner,
+        });
+    }
+    Ok(embedder_instances)
 }
 
 pub(crate) fn client_impl(
@@ -271,32 +229,8 @@ pub(crate) fn client_impl(
         }
     };
 
-    let embedder_types = {
-        let mut embedders = Vec::new();
-        for f in &input.fields {
-            'loop_attrs: for a in &f.attrs {
-                match &a.meta {
-                    syn::Meta::Path(p) => {
-                        let ident = p
-                            .get_ident()
-                            .ok_or(ClientMacroError::UnrecognizedAttribute(format!("{p:?}")))?;
-
-                        if ident == "embedder" {
-                            embedders.push(f.ty.clone());
-                        }
-                    }
-                    _ => {
-                        continue 'loop_attrs;
-                    }
-                }
-            }
-        }
-
-        embedders
-    };
-
-    let provider_type = BuiltInProviderType::from_str(&config.provider)?;
-    validate_config(&config, &provider_type)?;
+    let (struct_ident, struct_vis) = (&input.ident, &input.vis);
+    let embedder_instances = parse_embedders(&input)?;
 
     let tool_execution_mode = if let Some(txm) = &config.clone().execution_mode {
         ExecutionModeType::from_str(txm)?
@@ -306,26 +240,38 @@ pub(crate) fn client_impl(
     .to_string();
     let tool_execution_mode = syn::Type::from_string(&tool_execution_mode)?;
     let tool_names: Vec<proc_macro2::Ident> =
-        resolve_tools(&config.clone().tools.map(|v| v.0).unwrap_or_default());
+        parse_tools(&config.clone().tools.map(|v| v.0).unwrap_or_default());
     let tool_set = quote! { seedframe::tools::ToolSet(vec![#(Box::new(#tool_names::new())),*], #tool_execution_mode) };
 
-    let (struct_ident, struct_vis) = (&input.ident, &input.vis);
-    let builder_impl = generate_builder(
-        &provider_type,
-        &embedder_types,
-        &config,
-        struct_vis,
-        &tool_set,
-    );
-    let kind: syn::Type = syn::parse_str(&provider_type.to_string()).expect("Failed to parse type");
-
-    Ok(quote! {
-        #struct_vis struct #struct_ident{
-            inner: seedframe::completion::Client<#kind>,
+    let model = config.model.as_ref().unwrap().to_string();
+    let kind: syn::Type;
+    let model_init = match parse_completion_provider(&config)? {
+        ProviderType::BuiltIn(t) => {
+            kind = t.clone();
+            quote! {let model = #t::new(None, None, String::from(#model));}
+        },
+        ProviderType::External(t) => {
+            kind = t.clone();
+            quote! {let model = #t::new();}
         }
+    };
 
-        impl #struct_ident {
-            #builder_impl
+    Ok(
+        quote! {
+            #struct_vis struct #struct_ident;
+            
+            impl #struct_ident{
+                #struct_vis async fn build(preamble: impl AsRef<str>) -> seedframe::completion::Client<#kind> {
+                    use seedframe::completion::CompletionModel;
+                    #model_init
+                    model.build_client(
+                        preamble,
+                        vec![#embedder_instances],
+                        #tool_set
+                    )
+                }
+            }
+
         }
-    })
+    )
 }

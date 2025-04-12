@@ -7,16 +7,23 @@ use thiserror::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct EmbedderConfig {
-    provider: String,
+    #[darling(default)]
+    provider: Option<String>,
     #[darling(default)]
     model: Option<String>,
+    #[darling(default)]
+    external: Option<syn::Type>,
+    #[darling(default)]
+    api_key_var: Option<String>,
+    #[darling(default)]
+    url: Option<String>,
 }
 
 #[derive(Debug, Error)]
 pub(crate) enum EmbedderMacroError {
     #[error("Unknown embedding model provider: '{0}'. valid options are openai,")]
     UnknownEmbedderModel(String),
-    #[error("Failed to parse loader macro: ")]
+    #[error(transparent)]
     ParseError(#[from] darling::Error),
     #[error("Unsupported argument '{0}' for '{1}' embedder type")]
     UnsupportedArgument(String, String),
@@ -39,7 +46,7 @@ impl Display for BuiltInEmbedderType {
             f,
             "{}",
             match self {
-                Self::OpenAIEmbeddingModel => "OpenAIEmbeddingModel",
+                Self::OpenAIEmbeddingModel => "seedframe::providers::embeddings::openai::OpenAIEmbeddingModel",
             }
         )
     }
@@ -52,86 +59,6 @@ impl BuiltInEmbedderType {
             unknown => Err(EmbedderMacroError::UnknownEmbedderModel(
                 unknown.to_string(),
             )),
-        }
-    }
-
-    fn required_args(&self) -> &'static [&'static str] {
-        match self {
-            Self::OpenAIEmbeddingModel => &["model"],
-        }
-    }
-
-    fn supported_args(&self) -> &'static [&'static str] {
-        match self {
-            Self::OpenAIEmbeddingModel => &["model"],
-        }
-    }
-}
-
-fn validate_config(
-    config: &EmbedderConfig,
-    loader_type: &BuiltInEmbedderType,
-) -> Result<(), EmbedderMacroError> {
-    let required = loader_type.required_args();
-    let supported = loader_type.supported_args();
-    let check_arg = |name: &str, value: &Option<String>| {
-        if value.is_none() && required.contains(&name) {
-            Err(EmbedderMacroError::MissingArgument(
-                name.to_string(),
-                loader_type.to_string(),
-            ))
-        } else if value.is_some() && !supported.contains(&name) {
-            Err(EmbedderMacroError::UnsupportedArgument(
-                name.to_string(),
-                loader_type.to_string(),
-            ))
-        } else {
-            Ok(())
-        }
-    };
-    check_arg("model", &config.model)?;
-    Ok(())
-}
-fn generate_builder(
-    embedder_type: &BuiltInEmbedderType,
-    vector_store_type: syn::Type,
-    loader_types: Vec<syn::Type>,
-    config: &EmbedderConfig,
-    vis: &syn::Visibility,
-) -> proc_macro2::TokenStream {
-    let vector_store_instanciated = quote! {
-        ::std::sync::Arc::new(::tokio::sync::Mutex::new(::std::boxed::Box::new(#vector_store_type::build().await.unwrap().inner)))
-    };
-    let mut loader_instances = quote! {};
-
-    for loader_type in loader_types {
-        let string_type = loader_type.to_token_stream().to_string().to_uppercase();
-        let loader_ident = format_ident!("__{}_INSTANCE", string_type);
-
-        loader_instances.extend(quote!{
-            ::std::sync::Arc::clone(&*#loader_ident,) as ::std::sync::Arc<dyn ::seedframe::loader::Loader>,
-        });
-    }
-
-    match embedder_type {
-        BuiltInEmbedderType::OpenAIEmbeddingModel => {
-            let model = config.model.as_ref().unwrap().to_string();
-            let embedding_model_init = quote! {
-                {
-                    ::std::sync::Arc::new(::std::boxed::Box::new(seedframe::providers::embeddings::openai::OpenAIEmbeddingModel::new(::std::env::var("SEEDFRAME_OPENAI_API_KEY").unwrap().to_string(), "https://api.openai.com/v1/embeddings".to_string(), #model.to_string())))
-                }
-            };
-            quote! {
-                #vis async fn build() -> Self {
-                    Self { inner:
-                        seedframe::embeddings::Embedder::init(
-                            vec![#loader_instances],
-                            #vector_store_instanciated,
-                            #embedding_model_init,
-                        ).await.unwrap()
-                    }
-                }
-            }
         }
     }
 }
@@ -160,6 +87,24 @@ pub(crate) fn embedder_impl(
         }
     };
 
+    validate_config(&config)?;
+    let (struct_ident, struct_vis) = (&input.ident, &input.vis);
+    let builder_impl = generate_builder(&input, &config)?;
+    Ok(quote! {
+        #struct_vis struct #struct_ident{
+            inner: seedframe::embeddings::Embedder,
+        }
+
+        impl #struct_ident {
+            #builder_impl
+        }
+    })
+}
+
+fn generate_builder(
+    input: &syn::ItemStruct,
+    config: &EmbedderConfig,
+) -> Result<proc_macro2::TokenStream, EmbedderMacroError> {
     let vector_store_type = {
         let mut vector_store = None;
         'loop_fields: for f in &input.fields {
@@ -208,25 +153,109 @@ pub(crate) fn embedder_impl(
         loaders
     };
 
-    let embedder_type = BuiltInEmbedderType::from_str(&config.provider)?;
-    validate_config(&config, &embedder_type)?;
+    let vector_store_instanciated = quote! {
+        ::std::sync::Arc::new(::tokio::sync::Mutex::new(::std::boxed::Box::new(#vector_store_type::build().await.unwrap().inner)))
+    };
+    let mut loader_instances = quote! {};
 
-    let (struct_ident, struct_vis) = (&input.ident, &input.vis);
-    let builder_impl = generate_builder(
-        &embedder_type,
-        vector_store_type,
-        loader_types,
-        &config,
-        struct_vis,
-    );
+    for loader_type in loader_types {
+        let string_type = loader_type.to_token_stream().to_string().to_uppercase();
+        let loader_ident = format_ident!("__{}_INSTANCE", string_type);
+
+        loader_instances.extend(quote!{
+            ::std::sync::Arc::clone(&*#loader_ident,) as ::std::sync::Arc<dyn ::seedframe::loader::Loader>,
+        });
+    }
+
+    let embedding_model_init = match parse_embedder_type(config)? {
+        ProviderType::BuiltIn(t) => {
+            let model = config.model.as_ref().unwrap().to_string();
+            let api_key = if let Some(key) = &config.api_key_var {
+                quote!{Some(#key.to_string())}
+            }else {quote!{None}};
+            let url = if let Some(url) = &config.url{
+                quote!{Some(#url.to_string())}
+            }else {quote!{None}};
+            quote!{
+                ::std::sync::Arc::new(::std::boxed::Box::new(#t::new(#api_key, #url, #model.to_string())))
+            }
+        },
+        ProviderType::External(t) => {
+            quote!{
+                ::std::sync::Arc::new(::std::boxed::Box::new(#t::new()))
+            }
+        },
+    };
+
+    let vis = input.clone().vis;
 
     Ok(quote! {
-        #struct_vis struct #struct_ident{
-            inner: seedframe::embeddings::Embedder,
-        }
-
-        impl #struct_ident {
-            #builder_impl
+        #vis async fn build() -> Self {
+            Self { inner:
+                seedframe::embeddings::Embedder::init(
+                    vec![#loader_instances],
+                    #vector_store_instanciated,
+                    #embedding_model_init,
+                ).await.unwrap()
+            }
         }
     })
+}
+
+enum ProviderType {
+    BuiltIn(syn::Type),
+    External(syn::Type),
+}
+
+fn parse_embedder_type(config: &EmbedderConfig) -> Result<ProviderType, EmbedderMacroError> {
+    let p_type = if config.provider.is_some() {
+        let type_str = BuiltInEmbedderType::from_str(&config.provider.clone().unwrap())?.to_string();
+        syn::parse_str(&type_str).map_err(|e| EmbedderMacroError::ParseError(darling::Error::from(e)))?
+    }else {
+        config.external.clone().unwrap()
+    };
+
+    if config.provider.is_some() {
+        Ok(ProviderType::BuiltIn(p_type))
+    }else {
+        Ok(ProviderType::External(p_type))
+    }
+}
+
+fn validate_config(config: &EmbedderConfig) -> Result<(), EmbedderMacroError> {
+    if config.provider.is_some() && config.external.is_some() {
+        return Err(EmbedderMacroError::ParseError(darling::Error::custom(
+                    "Only one of the attributes `provider` and `external` allowed at a time!")));
+    }
+
+    if config.provider.is_none() && config.external.is_none() {
+        return Err(EmbedderMacroError::ParseError(darling::Error::custom(
+                    "Expected one of the attributes `provider` or `external`!")));
+    }
+
+    if config.provider.is_some() {
+        ensure_required_field(&config.model, "model", "builtlin")?;
+    } else {
+        let unsupported_args = [
+            ("api_key_var", config.api_key_var.is_some()),
+            ("url", config.url.is_some()),
+            ("model", config.model.is_some()),
+        ];
+
+        for (arg, is_present) in unsupported_args {
+            if is_present {
+                return Err(EmbedderMacroError::UnsupportedArgument(arg.to_string(), "external".to_string()));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn ensure_required_field<T>(field: &Option<T>, name: &str, default: &str) -> Result<(), EmbedderMacroError> {
+    if field.is_none() {
+        Err(EmbedderMacroError::MissingArgument(name.to_string(), default.to_string()))
+    } else {
+        Ok(())
+    }
 }

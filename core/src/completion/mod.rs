@@ -217,7 +217,7 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
 
     /// Sends the prompt to the LLM
     pub async fn send(self) -> Result<Message, crate::error::Error> {
-        let tools = if self.with_tools {
+        let tools = if self.with_tools && !self.client.tools.0.is_empty(){
             Some(&*self.client.tools)
         } else {
             None

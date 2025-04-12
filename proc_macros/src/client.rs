@@ -16,7 +16,7 @@ struct ClientConfig {
     #[darling(default)]
     execution_mode: Option<String>,
     #[darling(default)]
-    external: Option<String>,
+    external: Option<syn::Type>,
     #[darling(default)]
     api_key_var: Option<String>,
     #[darling(default)]
@@ -219,7 +219,7 @@ fn validate_config(config: &ClientConfig) -> Result<(), ClientMacroError> {
                     "Expected one of the attributes `provider` or `external`!")));
     }
 
-    if let Some(_) = config.provider {
+    if config.provider.is_some() {
         ensure_required_field(&config.model, "model", "builtlin")?;
     } else {
         let unsupported_args = [
@@ -253,12 +253,12 @@ enum ProviderType {
 
 fn parse_completion_provider(config: &ClientConfig) -> Result<ProviderType, ClientMacroError> {
     validate_config(config)?;
-    let type_str = if let Some(p) = &config.provider {
-        BuiltInProviderType::from_str(&p)?.to_string()
+    let p_type = if let Some(p) = &config.provider {
+        let type_str = BuiltInProviderType::from_str(p)?.to_string();
+        syn::parse_str(&type_str).map_err(|e| ClientMacroError::ParseError(darling::Error::from(e)))?
     }else {
         config.external.clone().unwrap()
     };
-    let p_type = syn::parse_str(&type_str).map_err(|e| ClientMacroError::ParseError(darling::Error::from(e)))?;
 
     if config.provider.is_some() {
         Ok(ProviderType::BuiltIn(p_type))

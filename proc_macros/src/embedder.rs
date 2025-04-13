@@ -17,6 +17,20 @@ struct EmbedderConfig {
     api_key_var: Option<String>,
     #[darling(default)]
     url: Option<String>,
+    #[darling(default)]
+    config: Option<JsonStr>
+}
+
+#[derive(Debug, Clone)]
+struct JsonStr(serde_json::Value);
+impl FromMeta for JsonStr {
+    fn from_string(value: &str) -> darling::Result<Self> {
+        let value: serde_json::Value = serde_json::from_str(value).map_err(|e| {
+            darling::Error::custom(format!("Invalid JSON: {}", e))
+        })?;
+
+        Ok(JsonStr(value))
+    }
 }
 
 #[derive(Debug, Error)]
@@ -181,8 +195,11 @@ fn generate_builder(
             }
         },
         ProviderType::External(t) => {
-            quote!{
-                ::std::sync::Arc::new(::std::boxed::Box::new(#t::new()))
+            if let Some(json_str) = &config.config {
+                let json_str = serde_json::to_string(&json_str.0).unwrap();
+                quote! { ::std::sync::Arc::new(::std::boxed::Box::new(#t::new(Some(#json_str)))) }
+            }else {
+                quote! { ::std::sync::Arc::new(::std::boxed::Box::new(#t::new(None))) }
             }
         },
     };
@@ -235,6 +252,13 @@ fn validate_config(config: &EmbedderConfig) -> Result<(), EmbedderMacroError> {
 
     if config.provider.is_some() {
         ensure_required_field(&config.model, "model", "builtlin")?;
+        let unsupported_args = [ ("config", config.config.is_some()) ];
+
+        for (arg, is_present) in unsupported_args {
+            if is_present {
+                return Err(EmbedderMacroError::UnsupportedArgument(arg.to_string(), "builtin".to_string()));
+            }
+        }
     } else {
         let unsupported_args = [
             ("api_key_var", config.api_key_var.is_some()),

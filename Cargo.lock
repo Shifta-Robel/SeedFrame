@@ -1949,6 +1949,7 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2",
  "quote",
+ "serde_json",
  "syn 2.0.93",
  "thiserror 2.0.12",
 ]

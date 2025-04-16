@@ -4,5 +4,6 @@ resolver="2"
 members = [
   "core/",
   "proc_macros/",
-  "completion_provider_integrations/seedframe_anthropic/"
+  "completion_provider_integrations/seedframe_anthropic/",
+  "embedding_provider_integrations/seedframe_voyageai/"
 ]

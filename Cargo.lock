@@ -1967,6 +1967,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "seedframe_voyageai"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "reqwest",
+ "seedframe",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.219"
 source = "registry+https://github.com/rust-lang/crates.io-index"

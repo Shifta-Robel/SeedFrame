@@ -2,21 +2,11 @@ use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use quote::{format_ident, quote};
-use std::fmt::Display;
 use thiserror::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct EmbedderConfig {
-    #[darling(default)]
-    provider: Option<String>,
-    #[darling(default)]
-    model: Option<String>,
-    #[darling(default)]
-    external: Option<syn::Type>,
-    #[darling(default)]
-    api_key_var: Option<String>,
-    #[darling(default)]
-    url: Option<String>,
+    provider: syn::Type,
     #[darling(default)]
     config: Option<JsonStr>
 }
@@ -35,46 +25,12 @@ impl FromMeta for JsonStr {
 
 #[derive(Debug, Error)]
 pub(crate) enum EmbedderMacroError {
-    #[error("Unknown embedding model provider: '{0}'. valid options are openai,")]
-    UnknownEmbedderModel(String),
     #[error(transparent)]
     ParseError(#[from] darling::Error),
-    #[error("Unsupported argument '{0}' for '{1}' embedder type")]
-    UnsupportedArgument(String, String),
-    #[error("Missing required argument '{0}' for '{1}' embedder type")]
-    MissingArgument(String, String),
     #[error("Missing field with #[vector_store] attribute")]
     MissingVectorStore,
     #[error("Unrecognized attribute {0}")]
     UnrecognizedAttribute(String),
-}
-
-#[derive(Debug, Clone)]
-enum BuiltInEmbedderType {
-    OpenAIEmbeddingModel,
-}
-
-impl Display for BuiltInEmbedderType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::OpenAIEmbeddingModel => "seedframe::providers::embeddings::openai::OpenAIEmbeddingModel",
-            }
-        )
-    }
-}
-
-impl BuiltInEmbedderType {
-    fn from_str(provider: &str) -> Result<Self, EmbedderMacroError> {
-        match provider {
-            "openai" => Ok(Self::OpenAIEmbeddingModel),
-            unknown => Err(EmbedderMacroError::UnknownEmbedderModel(
-                unknown.to_string(),
-            )),
-        }
-    }
 }
 
 pub(crate) fn embedder_impl(
@@ -100,8 +56,6 @@ pub(crate) fn embedder_impl(
             return Err(e.into());
         }
     };
-
-    validate_config(&config)?;
     let (struct_ident, struct_vis) = (&input.ident, &input.vis);
     let builder_impl = generate_builder(&input, &config)?;
     Ok(quote! {
@@ -113,6 +67,7 @@ pub(crate) fn embedder_impl(
             #builder_impl
         }
     })
+
 }
 
 fn generate_builder(
@@ -181,27 +136,12 @@ fn generate_builder(
         });
     }
 
-    let embedding_model_init = match parse_embedder_type(config)? {
-        ProviderType::BuiltIn(t) => {
-            let model = config.model.as_ref().unwrap().to_string();
-            let api_key = if let Some(key) = &config.api_key_var {
-                quote!{Some(#key.to_string())}
-            }else {quote!{None}};
-            let url = if let Some(url) = &config.url{
-                quote!{Some(#url.to_string())}
-            }else {quote!{None}};
-            quote!{
-                ::std::sync::Arc::new(::std::boxed::Box::new(#t::new(#api_key, #url, #model.to_string())))
-            }
-        },
-        ProviderType::External(t) => {
-            if let Some(json_str) = &config.config {
-                let json_str = serde_json::to_string(&json_str.0).unwrap();
-                quote! { ::std::sync::Arc::new(::std::boxed::Box::new(#t::new(Some(#json_str)))) }
-            }else {
-                quote! { ::std::sync::Arc::new(::std::boxed::Box::new(#t::new(None))) }
-            }
-        },
+    let t = config.provider.clone();
+    let embedding_model_init = if let Some(json_str) = &config.config {
+        let json_str = serde_json::to_string(&json_str.0).unwrap();
+        quote! { ::std::sync::Arc::new(::std::boxed::Box::new(#t::new(Some(#json_str)))) }
+    }else {
+        quote! { ::std::sync::Arc::new(::std::boxed::Box::new(#t::new(None))) }
     };
 
     let vis = input.clone().vis;
@@ -219,67 +159,3 @@ fn generate_builder(
     })
 }
 
-enum ProviderType {
-    BuiltIn(syn::Type),
-    External(syn::Type),
-}
-
-fn parse_embedder_type(config: &EmbedderConfig) -> Result<ProviderType, EmbedderMacroError> {
-    let p_type = if config.provider.is_some() {
-        let type_str = BuiltInEmbedderType::from_str(&config.provider.clone().unwrap())?.to_string();
-        syn::parse_str(&type_str).map_err(|e| EmbedderMacroError::ParseError(darling::Error::from(e)))?
-    }else {
-        config.external.clone().unwrap()
-    };
-
-    if config.provider.is_some() {
-        Ok(ProviderType::BuiltIn(p_type))
-    }else {
-        Ok(ProviderType::External(p_type))
-    }
-}
-
-fn validate_config(config: &EmbedderConfig) -> Result<(), EmbedderMacroError> {
-    if config.provider.is_some() && config.external.is_some() {
-        return Err(EmbedderMacroError::ParseError(darling::Error::custom(
-                    "Only one of the attributes `provider` and `external` allowed at a time!")));
-    }
-
-    if config.provider.is_none() && config.external.is_none() {
-        return Err(EmbedderMacroError::ParseError(darling::Error::custom(
-                    "Expected one of the attributes `provider` or `external`!")));
-    }
-
-    if config.provider.is_some() {
-        ensure_required_field(&config.model, "model", "builtlin")?;
-        let unsupported_args = [ ("config", config.config.is_some()) ];
-
-        for (arg, is_present) in unsupported_args {
-            if is_present {
-                return Err(EmbedderMacroError::UnsupportedArgument(arg.to_string(), "builtin".to_string()));
-            }
-        }
-    } else {
-        let unsupported_args = [
-            ("api_key_var", config.api_key_var.is_some()),
-            ("url", config.url.is_some()),
-            ("model", config.model.is_some()),
-        ];
-
-        for (arg, is_present) in unsupported_args {
-            if is_present {
-                return Err(EmbedderMacroError::UnsupportedArgument(arg.to_string(), "external".to_string()));
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn ensure_required_field<T>(field: &Option<T>, name: &str, default: &str) -> Result<(), EmbedderMacroError> {
-    if field.is_none() {
-        Err(EmbedderMacroError::MissingArgument(name.to_string(), default.to_string()))
-    } else {
-        Ok(())
-    }
-}

@@ -1,8 +1,9 @@
 use seedframe::prelude::*;
+use seedframe::providers::completions::OpenAI;
 
 #[client(
-    provider = "openai",
-    model = "gpt-4o-mini",
+    provider = "OpenAI",
+    config = "{\"model\": \"gpt-4o-mini\"}",
     tools("capitalize", "greet")
 )]
 struct SimpleClient;

@@ -1,8 +1,9 @@
 use seedframe::prelude::*;
+use seedframe::providers::completions::OpenAI;
 use serde::Deserialize;
 use schemars::JsonSchema;
 
-#[client(provider = "openai",model = "gpt-4o-mini")]
+#[client(provider = "OpenAI")]
 struct ExtractorClient;
 
 #[allow(unused)]

@@ -1,28 +1,29 @@
 use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::TokenStream;
 use quote::quote;
-use std::{fmt::Display, str::FromStr};
+use std::fmt::Display;
 use syn::{parse::Parser, ItemStruct, Meta};
 use thiserror::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct ClientConfig {
+    provider: syn::Type,
     #[darling(default)]
-    provider: Option<String>,
-    #[darling(default)]
-    model: Option<String>,
+    config: Option<JsonStr>,
     #[darling(default)]
     tools: Option<ToolNames>,
     #[darling(default)]
     execution_mode: Option<String>,
-    #[darling(default)]
-    external: Option<syn::Type>,
-    #[darling(default)]
-    api_key_var: Option<String>,
-    #[darling(default)]
-    url: Option<String>,
-    #[darling(default)]
-    config: Option<JsonStr>
+}
+
+#[derive(Debug, Error)]
+pub(crate) enum ClientMacroError {
+    #[error(transparent)]
+    ParseError(#[from] darling::Error),
+    #[error("Unrecognized attribute {0}")]
+    UnrecognizedAttribute(String),
+    #[error("Unknown execution mode : '{0}'. valid options are fail_early or best_effort")]
+    UnknownExecutionMode(String),
 }
 
 #[derive(Debug, Clone)]
@@ -35,22 +36,6 @@ impl FromMeta for JsonStr {
 
         Ok(JsonStr(value))
     }
-}
-
-#[derive(Debug, Error)]
-pub(crate) enum ClientMacroError {
-    #[error("Unknown completion model provider: '{0}'. valid options are openai, deepseek, xai")]
-    UnknownCompletionModel(String),
-    #[error(transparent)]
-    ParseError(#[from] darling::Error),
-    #[error("Unsupported argument '{0}' for '{1}' client type")]
-    UnsupportedArgument(String, String),
-    #[error("Missing required argument '{0}' for '{1}' client type")]
-    MissingArgument(String, String),
-    #[error("Unrecognized attribute {0}")]
-    UnrecognizedAttribute(String),
-    #[error("Unknown execution mode : '{0}'. valid options are fail_early or best_effort")]
-    UnknownExecutionMode(String),
 }
 
 #[derive(Clone, Debug)]
@@ -107,44 +92,6 @@ impl ExecutionModeType {
     }
 }
 
-#[derive(Debug, Clone)]
-enum BuiltInProviderType {
-    OpenAICompletionModel,
-    DeepseekCompletionModel,
-    XaiCompletionModel,
-}
-
-impl Display for BuiltInProviderType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::OpenAICompletionModel =>
-                    "seedframe::providers::completions::openai::OpenAICompletionModel",
-                Self::DeepseekCompletionModel =>
-                    "seedframe::providers::completions::deepseek::DeepseekCompletionModel",
-                Self::XaiCompletionModel =>
-                    "seedframe::providers::completions::xai::XaiCompletionModel",
-            }
-        )
-    }
-}
-
-impl FromStr for BuiltInProviderType {
-    type Err = ClientMacroError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "openai" => Ok(Self::OpenAICompletionModel),
-            "deepseek" => Ok(Self::DeepseekCompletionModel),
-            "xai" => Ok(Self::XaiCompletionModel),
-            unknown => Err(ClientMacroError::UnknownCompletionModel(
-                unknown.to_string(),
-            )),
-        }
-    }
-}
-
 pub(crate) fn client_impl(
     args: TokenStream,
     input: TokenStream,
@@ -182,30 +129,16 @@ pub(crate) fn client_impl(
     let tool_execution_mode = syn::Type::from_string(&tool_execution_mode)?;
     let tool_names: Vec<proc_macro2::Ident> =
         parse_tools(&config.clone().tools.map(|v| v.0).unwrap_or_default());
-    let tool_set = quote! { seedframe::tools::ToolSet(vec![#(Box::new(#tool_names::new())),*], #tool_execution_mode) };
+    let tool_set = quote! {
+        seedframe::tools::ToolSet(vec![#(Box::new(#tool_names::new())),*], #tool_execution_mode) };
 
-    let kind: syn::Type;
-    let model_init = match parse_completion_provider(&config)? {
-        ProviderType::BuiltIn(t) => {
-            let model = config.model.as_ref().unwrap().to_string();
-            let api_key = if let Some(key) = config.api_key_var {
-                quote!{Some(#key.to_string())}
-            }else {quote!{None}};
-            let url = if let Some(url) = config.url{
-                quote!{Some(#url.to_string())}
-            }else {quote!{None}};
-            kind = t.clone();
-            quote! {let model = #t::new(#api_key, #url, String::from(#model));}
-        },
-        ProviderType::External(t) => {
-            kind = t.clone();
-            if let Some(json_str) = config.config {
-                let json_str = serde_json::to_string(&json_str.0).unwrap();
-                quote! {let model = #t::new(Some(#json_str));}
-            }else {
-                quote! {let model = #t::new(None);}
-            }
-        }
+    let t = config.provider.clone();
+
+    let model_init = if let Some(json_str) = config.config {
+        let json_str = serde_json::to_string(&json_str.0).unwrap();
+        quote! {let model = #t::new(Some(#json_str));}
+    }else {
+        quote! {let model = #t::new(None);}
     };
 
     Ok(
@@ -213,7 +146,7 @@ pub(crate) fn client_impl(
             #struct_vis struct #struct_ident;
             
             impl #struct_ident{
-                #struct_vis async fn build(preamble: impl AsRef<str>) -> seedframe::completion::Client<#kind> {
+                #struct_vis async fn build(preamble: impl AsRef<str>) -> seedframe::completion::Client<#t> {
                     use seedframe::completion::CompletionModel;
                     #model_init
                     model.build_client(
@@ -227,83 +160,9 @@ pub(crate) fn client_impl(
         }
     )
 }
-fn validate_config(config: &ClientConfig) -> Result<(), ClientMacroError> {
-    if config.provider.is_some() && config.external.is_some() {
-        return Err(ClientMacroError::ParseError(darling::Error::custom(
-                    "Only one of the attributes `provider` and `external` allowed at a time!")));
-    }
 
-    if config.provider.is_none() && config.external.is_none() {
-        return Err(ClientMacroError::ParseError(darling::Error::custom(
-                    "Expected one of the attributes `provider` or `external`!")));
-    }
-
-    if config.provider.is_some() {
-        ensure_required_field(&config.model, "model", "builtlin")?;
-        let unsupported_args = [ ("config", config.config.is_some()) ];
-
-        for (arg, is_present) in unsupported_args {
-            if is_present {
-                return Err(ClientMacroError::UnsupportedArgument(arg.to_string(), "builtin".to_string()));
-            }
-        }
-    } else {
-        let unsupported_args = [
-            ("api_key_var", config.api_key_var.is_some()),
-            ("url", config.url.is_some()),
-            ("model", config.model.is_some()),
-        ];
-
-        for (arg, is_present) in unsupported_args {
-            if is_present {
-                return Err(ClientMacroError::UnsupportedArgument(arg.to_string(), "external".to_string()));
-            }
-        }
-    }
-
+fn validate_config(_config: &ClientConfig) -> Result<(), ClientMacroError> {
     Ok(())
-}
-
-fn ensure_required_field<T>(field: &Option<T>, name: &str, default: &str) -> Result<(), ClientMacroError> {
-    if field.is_none() {
-        Err(ClientMacroError::MissingArgument(name.to_string(), default.to_string()))
-    } else {
-        Ok(())
-    }
-}
-
-enum ProviderType {
-    BuiltIn(syn::Type),
-    External(syn::Type)
-}
-
-fn parse_completion_provider(config: &ClientConfig) -> Result<ProviderType, ClientMacroError> {
-    validate_config(config)?;
-    let p_type = if let Some(p) = &config.provider {
-        let type_str = BuiltInProviderType::from_str(p)?.to_string();
-        syn::parse_str(&type_str).map_err(|e| ClientMacroError::ParseError(darling::Error::from(e)))?
-    }else {
-        config.external.clone().unwrap()
-    };
-
-    if config.provider.is_some() {
-        Ok(ProviderType::BuiltIn(p_type))
-    }else {
-        Ok(ProviderType::External(p_type))
-    }
-}
-
-fn parse_tools(tools: &[String]) -> Vec<proc_macro2::Ident> {
-    tools
-        .iter()
-        .map(|tool| {
-            let mut parts: Vec<&str> = tool.split("::").collect();
-            let last_part = parts.pop().unwrap();
-            let name = format!("__SF_TOOL_{last_part}__");
-            parts.push(&name);
-            proc_macro2::Ident::new(&parts.join("::"), proc_macro2::Span::call_site())
-        })
-        .collect()
 }
 
 fn parse_embedders(
@@ -341,3 +200,17 @@ fn parse_embedders(
     }
     Ok(embedder_instances)
 }
+
+fn parse_tools(tools: &[String]) -> Vec<proc_macro2::Ident> {
+    tools
+        .iter()
+        .map(|tool| {
+            let mut parts: Vec<&str> = tool.split("::").collect();
+            let last_part = parts.pop().unwrap();
+            let name = format!("__SF_TOOL_{last_part}__");
+            parts.push(&name);
+            proc_macro2::Ident::new(&parts.join("::"), proc_macro2::Span::call_site())
+        })
+        .collect()
+}
+

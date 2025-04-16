@@ -38,7 +38,10 @@ You could also extract structured output from the llms, the target types need to
 Like the tools the description for the type and for it's fields will get extracted from the docs and get passed to the llm, but its not an error to leave them undocumented.
 
 ```rust
-#[client(provider = "openai", model = "gpt-4o-mini", tools("analyze"))]
+use seedframe::prelude::*;
+use seedframe::providers::completions::OpenAI;
+
+#[client(provider = "OpenAI",config = "{\"model\": \"gpt-4o-mini\"}", tools("analyze"))]
 struct ToolClient;
 
 /// Perform sentiment analysis on text

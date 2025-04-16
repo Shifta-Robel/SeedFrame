@@ -12,6 +12,15 @@ const API_KEY_ENV_VAR: &str = "SEEDFRAME_DEEPSEEK_API_KEY";
 const URL: &str = "https://api.deepseek.com/chat/completions";
 const DEFAULT_TEMP: f64 = 1.0;
 const DEFAULT_TOKENS: usize = 2400;
+const DEFAULT_MODEL: &str = "deepseek";
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+struct ModelConfig {
+    api_key: Option<String>,
+    api_url: Option<String>,
+    model: Option<String>,
+}
 
 pub struct DeepseekCompletionModel {
     api_key: String,
@@ -21,14 +30,23 @@ pub struct DeepseekCompletionModel {
 }
 
 impl DeepseekCompletionModel {
-    #[must_use] pub fn new(api_key_var: Option<String>, api_url: Option<String>, model: String) -> Self {
-        let api_key_var = &api_key_var.unwrap_or(API_KEY_ENV_VAR.to_string());
-        let api_key = std::env::var(api_key_var).unwrap_or_else(|_| panic!("Failed to fetch env var `{api_key_var}` !"));
-        let api_url = api_url.unwrap_or(URL.to_string());
+    #[must_use] pub fn new(json_config: Option<&str>) -> Self {
+        let (api_key_var, api_url, model) = if let Some(json) = json_config {
+            let config: ModelConfig = serde_json::from_str(json).unwrap();
+            (
+                config.api_key.unwrap_or(API_KEY_ENV_VAR.to_string()),
+                config.api_url.unwrap_or(URL.to_string()),
+                config.model.unwrap_or(DEFAULT_MODEL.to_string())
+            )
+        }else {
+            (API_KEY_ENV_VAR.to_string(), URL.to_string(), DEFAULT_MODEL.to_string())
+        };
+        let api_key = std::env::var(api_key_var.clone())
+            .unwrap_or_else(|_| panic!("Failed to fetch env var `{api_key_var}` !"));
         Self {
             api_key,
-            client: reqwest::Client::new(),
             api_url,
+            client: reqwest::Client::new(),
             model,
         }
     }
@@ -37,7 +55,7 @@ impl DeepseekCompletionModel {
 #[derive(Serialize, Deserialize, Eq, PartialEq)]
 #[serde(tag = "role", content = "content")]
 #[allow(non_camel_case_types)]
-pub enum DeepseekMessage {
+enum DeepseekMessage {
     system(String),
     #[serde(serialize_with = "serialize_user")]
     user {
@@ -81,7 +99,7 @@ impl CompletionModel for DeepseekCompletionModel {
         preamble: impl AsRef<str>,
         embedder_instances: Vec<Embedder>,
         tools: ToolSet,
-    ) -> Client<impl CompletionModel> {
+    ) -> Client<Self> {
         Client::new(
             self,
             preamble,

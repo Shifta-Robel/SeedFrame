@@ -1,4 +1,5 @@
 use seedframe::prelude::*;
+use seedframe::providers::{completions::OpenAI, embeddings::OpenAIEmbedding};
 
 #[loader(kind = "FileOnceLoader", path = "/tmp/data/**/*.txt")]
 pub struct MyLoader;
@@ -6,7 +7,7 @@ pub struct MyLoader;
 #[vector_store(kind = "InMemoryVectorStore")]
 pub struct MyVectorStore;
 
-#[embedder(provider = "openai", model = "text-embedding-3-small")]
+#[embedder(provider = "OpenAIEmbedding")]
 struct MyEmbedder {
     #[vector_store]
     my_vector_store: MyVectorStore,
@@ -14,7 +15,7 @@ struct MyEmbedder {
     my_loader: MyLoader,
 }
 
-#[client(provider = "openai", model = "gpt-4o-mini")]
+#[client(provider = "OpenAI")]
 struct MyClient {
     #[embedder]
     my_embedder: MyEmbedder,

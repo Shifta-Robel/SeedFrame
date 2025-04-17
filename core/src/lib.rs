@@ -1,6 +1,8 @@
+//! # Seedframe - Core API Documentation
+//!
 //! Seedframe is a clean, macro-driven Rust library for building LLM applications.
 //! 
-//! # Features
+//! ## Features
 //! 
 //! - **Declarative API** through straight forward proc-macros
 //! - **Modular Architecture** with clearly defined components:
@@ -11,14 +13,15 @@
 //!   - **Tools**: Function calling abstractions with state management and automatic documentation
 //!   - **Extractors**: Structured output generation from LLM responses
 //! 
-//! # Examples
+//! ## Examples
 //! 
 //! The seedframe repo contains a [number of examples](https://github.com/Shifta-Robel/SeedFrame/tree/main/core/examples) that show how to put all the pieces together.
 //! 
-//! ## Building a simple RAG
+//! ### Building a simple RAG
 //!
 //! ```rust,no_run
 //! use seedframe::prelude::*;
+//! use seedframe::providers::{completions::OpenAI, embeddings::OpenAIEmbedding};
 //! 
 //! // Declare file loader that doesnt check for updates, loading files that match the glob pattern
 //! #[loader(kind = "FileOnceLoader", path = "/tmp/data/**/*.txt")]
@@ -27,7 +30,7 @@
 //! #[vector_store(kind = "InMemoryVectorStore")]
 //! pub struct MyVectorStore;
 //! 
-//! #[embedder(provider = "openai", model = "text-embedding-3-small")]
+//! #[embedder(provider = "OpenAIEmbedding")]
 //! struct MyEmbedder {
 //!     #[vector_store]
 //!     my_vector_store: MyVectorStore,
@@ -35,7 +38,7 @@
 //!     my_loader: MyLoader,
 //! }
 //! 
-//! #[client(provider = "openai", model = "gpt-4o-mini")]
+//! #[client(provider = "OpenAI")]
 //! struct MyClient {
 //!     #[embedder]
 //!     my_embedder: MyEmbedder,
@@ -52,10 +55,12 @@
 //! }
 //! ```
 //! 
-//! ## Tool calls and Extractors
+//! ### Tool calls and Extractors
 //! 
 //! ```rust,no_run
-//! #[client(provider = "openai", model = "gpt-4o-mini", tools("analyze"))]
+//! use seedframe::{providers::completions::OpenAI, prelude::*};
+//!
+//! #[client(provider = "OpenAI", tools("analyze"))]
 //! struct ToolClient;
 //! 
 //! /// Perform sentiment analysis on text
@@ -93,14 +98,14 @@
 //! }
 //! ```
 //! 
-//! ## Sharing state with tools
+//! ### Sharing state with tools
 //!
 //! You can pass state to tools by adding arguments of type `State<_>` to them, the only catch is that there can only be one type of State\<T\> attached to the client.
 //! 
 //! ```rust,no_run
-//! use seedframe::prelude::*;
+//! use seedframe::{providers::completions::OpenAI, prelude::*};
 //! 
-//! #[client(provider = "openai", model = "gpt-4o-mini", tools("greet"))]
+//! #[client(provider = "OpenAI", tools("greet"))]
 //! struct ToolClient;
 //! 
 //! /// Greets a user
@@ -123,9 +128,10 @@
 //!     client.prompt("Say hi to jack for me".to_string())
 //!         .send()
 //!         .await?;
+//! }
 //! ```
 //! 
-//! ### Sharing mutable state with tools
+//! #### Sharing mutable state with tools
 //! 
 //! To share mutable state you can use types with interior mutablity, eg `Mutex`s
 //! 
@@ -159,9 +165,10 @@
 //!     client.prompt("Say hi to jack for me".to_string())
 //!         .send()
 //!         .await?;
+//! }
 //! ```
 //!
-//! # Feature flags
+//! ## Feature flags
 //! 
 //! seedframe uses a set of [feature flags] to reduce the amount of compiled and
 //! optional dependencies.
@@ -173,12 +180,40 @@
 //! `pinecone` | enables the pinecone vectorstore integration | No
 //! `pdf` | enables file loaders to parse PDFs | No
 
+/// Language model completion and conversation management
+///
+/// Contains:
+/// - Client for managing LLM interactions
+/// - Message history tracking
+/// - Response extraction
 pub mod completion;
+
+/// Document processing and representation utilities
+///
+/// Provides core types for handling text documents in embedding and retrieval workflows.
 pub mod document;
+
+/// Text embeddings support
 pub mod embeddings;
+
+/// Error types for all library operations
 pub mod error;
+
+/// Resource loading utilities
 pub mod loader;
+
+/// Convenience prelude exports
+///
+/// Re-exports commonly used types:
+/// - macros from seedframe_macros
+/// - `completion::State`
 pub mod prelude;
+
+/// Builtin completion and embedding model providers
 pub mod providers;
+
+/// Function calling and tool execution support
 pub mod tools;
+
+/// Vector storage and retrieval
 pub mod vector_store;

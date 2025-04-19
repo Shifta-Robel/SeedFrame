@@ -3,11 +3,11 @@
 //! This module provides a `WebScraper` struct that can fetch HTML content from a URL,
 //! optionally filter it using CSS selectors, and publish the results at regular intervals.
 
-use seedframe::document::Document;
-use seedframe::loader::Loader;
 use async_trait::async_trait;
 use chrono::Utc;
 use scraper::{Html, Selector};
+use seedframe::document::Document;
+use seedframe::loader::Loader;
 use serde::de::Error;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -18,9 +18,9 @@ use tokio::sync::Mutex;
 /// Configuration structure for the web scraper.
 ///
 /// This is deserialized from the JSON config provided in the `#[loader]` macro.
-/// 
+///
 /// # Examples
-/// 
+///
 /// Basic configuration:
 /// ```json
 /// {
@@ -64,13 +64,16 @@ pub struct WebScraper {
 
 impl WebScraper {
     /// Creates a new `WebScraper` from a JSON configuration string
+    ///
     /// # Errors
     /// This function will panic if:
     ///  - The provided JSON is malformed and cannot be parsed
     ///  - The JSON contains unknown fields
     pub fn new(json_str: Option<&str>) -> Result<Self, serde_json::Error> {
         if json_str.is_none() {
-            Err(serde_json::Error::custom("Expected a json config with atleast the `url` field specified! "))?
+            Err(serde_json::Error::custom(
+                "Expected a json config with atleast the `url` field specified! ",
+            ))?;
         }
         let config: Config = serde_json::from_str(json_str.unwrap())?;
         let (sender, _) = broadcast::channel(1);
@@ -150,7 +153,7 @@ mod tests {
             "interval": 60,
             "selector": "div.content"
         }"#;
-        
+
         let config: Result<Config, _> = serde_json::from_str(json);
         assert!(config.is_ok());
         let config = config.unwrap();
@@ -163,7 +166,8 @@ mod tests {
     async fn test_fetch_and_parse_with_selector() {
         let mut mock_server = mockito::Server::new_async().await;
         let url = mock_server.url();
-        let mock_server = mock_server.mock("GET", "/")
+        let mock_server = mock_server
+            .mock("GET", "/")
             .with_status(200)
             .with_body(r#"<html><div class="content">Test</div></html>"#)
             .create();
@@ -171,7 +175,7 @@ mod tests {
         let selector = Selector::parse("div.content").unwrap();
         let selector = Some(&selector);
         let result = WebScraper::fetch_and_parse(&url, selector).await;
-        
+
         mock_server.assert();
         assert!(result.is_ok());
         let doc = result.unwrap();
@@ -183,7 +187,8 @@ mod tests {
     async fn test_full_loader_cycle() {
         let mut mock_server = mockito::Server::new_async().await;
         let url = mock_server.url();
-        let _ = mock_server.mock("GET", "/")
+        let _ = mock_server
+            .mock("GET", "/")
             .with_body("Test Content")
             .create();
 
@@ -201,7 +206,8 @@ mod tests {
 
         let first = receiver.recv().await.unwrap();
 
-        let _ = mock_server.mock("GET", "/")
+        let _ = mock_server
+            .mock("GET", "/")
             .with_body("Just Content")
             .create();
 
@@ -223,9 +229,10 @@ mod tests {
 
         let scraper = WebScraper::new(json).unwrap();
         let mut receiver = scraper.subscribe().await;
-        
+
         let mut received = Vec::new();
-        while let Ok(doc) = tokio::time::timeout(Duration::from_millis(100), receiver.recv()).await {
+        while let Ok(doc) = tokio::time::timeout(Duration::from_millis(100), receiver.recv()).await
+        {
             received.push(doc.unwrap());
         }
 
@@ -238,7 +245,7 @@ mod tests {
         let json = r#"{"url": "invalid://url", "interval": null}"#;
         let scraper = WebScraper::new(json).unwrap();
         let mut receiver = scraper.subscribe().await;
-        
+
         let result = time::timeout(Duration::from_secs(1), receiver.recv()).await;
         assert!(result.is_err());
     }

@@ -30,9 +30,8 @@ pub(crate) enum ClientMacroError {
 struct JsonStr(serde_json::Value);
 impl FromMeta for JsonStr {
     fn from_string(value: &str) -> darling::Result<Self> {
-        let value: serde_json::Value = serde_json::from_str(value).map_err(|e| {
-            darling::Error::custom(format!("Invalid JSON: {}", e))
-        })?;
+        let value: serde_json::Value = serde_json::from_str(value)
+            .map_err(|e| darling::Error::custom(format!("Invalid JSON: {e}")))?;
 
         Ok(JsonStr(value))
     }
@@ -116,7 +115,6 @@ pub(crate) fn client_impl(
         }
     };
 
-    validate_config(&config)?;
     let (struct_ident, struct_vis) = (&input.ident, &input.vis);
     let embedder_instances = parse_embedders(&input)?;
 
@@ -130,44 +128,36 @@ pub(crate) fn client_impl(
     let tool_names: Vec<proc_macro2::Ident> =
         parse_tools(&config.clone().tools.map(|v| v.0).unwrap_or_default());
     let tool_set = quote! {
-        seedframe::tools::ToolSet(vec![#(Box::new(#tool_names::new())),*], #tool_execution_mode) };
+    seedframe::tools::ToolSet(vec![#(Box::new(#tool_names::new())),*], #tool_execution_mode) };
 
     let t = config.provider.clone();
 
     let model_init = if let Some(json_str) = config.config {
         let json_str = serde_json::to_string(&json_str.0).unwrap();
         quote! {let model = #t::new(Some(#json_str));}
-    }else {
+    } else {
         quote! {let model = #t::new(None);}
     };
 
-    Ok(
-        quote! {
-            #struct_vis struct #struct_ident;
-            
-            impl #struct_ident{
-                #struct_vis async fn build(preamble: impl AsRef<str>) -> seedframe::completion::Client<#t> {
-                    use seedframe::completion::CompletionModel;
-                    #model_init
-                    model.build_client(
-                        preamble,
-                        vec![#embedder_instances],
-                        #tool_set
-                    )
-                }
+    Ok(quote! {
+        #struct_vis struct #struct_ident;
+
+        impl #struct_ident{
+            #struct_vis async fn build(preamble: impl AsRef<str>) -> seedframe::completion::Client<#t> {
+                use seedframe::completion::CompletionModel;
+                #model_init
+                model.build_client(
+                    preamble,
+                    vec![#embedder_instances],
+                    #tool_set
+                )
             }
-
         }
-    )
+
+    })
 }
 
-fn validate_config(_config: &ClientConfig) -> Result<(), ClientMacroError> {
-    Ok(())
-}
-
-fn parse_embedders(
-    input: &ItemStruct,
-) ->Result<TokenStream, ClientMacroError> {
+fn parse_embedders(input: &ItemStruct) -> Result<TokenStream, ClientMacroError> {
     let embedder_types = {
         let mut embedders = Vec::new();
         for f in input.clone().fields {
@@ -213,4 +203,3 @@ fn parse_tools(tools: &[String]) -> Vec<proc_macro2::Ident> {
         })
         .collect()
 }
-

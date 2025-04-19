@@ -70,8 +70,13 @@ impl FileUpdatingLoaderBuilder {
     /// # Returns
     /// * `FileUpdatingLoader` - A new `FileUpdatingLoader` instance.
     pub fn build(self) -> FileUpdatingLoader {
-        let files = resolve_input_to_files(self.glob_patterns.iter().map(std::string::String::as_str).collect())
-            .unwrap();
+        let files = resolve_input_to_files(
+            self.glob_patterns
+                .iter()
+                .map(std::string::String::as_str)
+                .collect(),
+        )
+        .unwrap();
         let capacity = if files.is_empty() {
             DEFAULT_CHANNEL_CAPACITY
         } else {

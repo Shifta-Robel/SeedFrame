@@ -1,7 +1,7 @@
-use seedframe::completion::{Client, CompletionError, CompletionModel, Message, TokenUsage };
+use async_trait::async_trait;
+use seedframe::completion::{Client, CompletionError, CompletionModel, Message, TokenUsage};
 use seedframe::embeddings::Embedder;
 use seedframe::tools::{ToolCall, ToolResponse, ToolSet};
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -37,7 +37,7 @@ struct ModelConfig {
 /// - `api_url`: Custom API endpoint URL
 ///
 /// All of the are optional so the config can be left altogeather or parts of it could be specified
-/// 
+///
 /// # Examples
 ///
 /// Usage with the `client` macro:
@@ -82,16 +82,21 @@ impl AnthropicCompletionModel {
     /// - The provided JSON is malformed and cannot be parsed
     /// - The JSON contains unknown fields
     /// - Required environment variables are not set
-    #[must_use] pub fn new(config_json: Option<&str>) -> Self {
+    #[must_use]
+    pub fn new(config_json: Option<&str>) -> Self {
         let (api_key_var, api_url, model) = if let Some(json) = config_json {
             let config: ModelConfig = serde_json::from_str(json).unwrap();
             (
                 config.api_key.unwrap_or(API_KEY_ENV_VAR.to_string()),
                 config.api_url.unwrap_or(URL.to_string()),
-                config.model.unwrap_or(DEFAULT_MODEL.to_string())
+                config.model.unwrap_or(DEFAULT_MODEL.to_string()),
             )
-        }else {
-            (API_KEY_ENV_VAR.to_string(), URL.to_string(), DEFAULT_MODEL.to_string())
+        } else {
+            (
+                API_KEY_ENV_VAR.to_string(),
+                URL.to_string(),
+                DEFAULT_MODEL.to_string(),
+            )
         };
         let api_key = std::env::var(api_key_var).unwrap();
         Self {
@@ -108,18 +113,25 @@ impl AnthropicCompletionModel {
 #[serde(tag = "role", content = "content")]
 #[allow(non_camel_case_types)]
 pub(crate) enum AnthropicMessage {
-    user (Vec<ContentBlock>),
-    assistant (Vec<ContentBlock>)
+    user(Vec<ContentBlock>),
+    assistant(Vec<ContentBlock>),
 }
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Debug)]
 #[serde(tag = "type")]
 pub(crate) enum ContentBlock {
     #[serde(rename = "text")]
-    Text { text: String },
+    Text {
+        text: String,
+    },
     #[serde(rename = "thinking")]
-    Thinking { thinking: String, signature: String },
+    Thinking {
+        thinking: String,
+        signature: String,
+    },
     #[serde(rename = "redacted_thinking")]
-    RedactedThinking { data: String },
+    RedactedThinking {
+        data: String,
+    },
     ToolUse(ToolCall),
     ToolResult(ToolResponse),
 }
@@ -127,28 +139,38 @@ pub(crate) enum ContentBlock {
 impl From<Message> for AnthropicMessage {
     fn from(value: Message) -> Self {
         match value {
-            Message::Preamble(_) => {
-                Self::user (vec![ContentBlock::Text{ text: String::new() }])
-            },
-            Message::User { content, tool_responses } => {
+            Message::Preamble(_) => Self::user(vec![ContentBlock::Text {
+                text: String::new(),
+            }]),
+            Message::User {
+                content,
+                tool_responses,
+            } => {
                 let mut out: Vec<ContentBlock> = Vec::new();
                 if !content.is_empty() {
                     let vals = utils::parse_content_blocks(&content);
                     vals.iter().for_each(|v| out.push(v.clone()));
                 }
                 if let Some(tools) = tool_responses {
-                    tools.iter().for_each(|t| out.push(ContentBlock::ToolResult(t.clone())));
+                    tools
+                        .iter()
+                        .for_each(|t| out.push(ContentBlock::ToolResult(t.clone())));
                 }
                 Self::user(out)
-            },
-            Message::Assistant { content, tool_calls } => {
+            }
+            Message::Assistant {
+                content,
+                tool_calls,
+            } => {
                 let mut out = Vec::new();
                 if !content.is_empty() {
                     let vals = utils::parse_content_blocks(&content);
                     vals.iter().for_each(|v| out.push(v.clone()));
                 }
-                if let Some(tools) = tool_calls{
-                    tools.iter().for_each(|t| out.push(ContentBlock::ToolUse(t.clone())));
+                if let Some(tools) = tool_calls {
+                    tools
+                        .iter()
+                        .for_each(|t| out.push(ContentBlock::ToolUse(t.clone())));
                 }
                 Self::user(out)
             }
@@ -171,9 +193,10 @@ impl CompletionModel for AnthropicCompletionModel {
             DEFAULT_TEMP,
             DEFAULT_TOKENS,
             embedder_instances,
-            tools
+            tools,
         )
     }
+    #[allow(clippy::too_many_lines)]
     async fn send(
         &mut self,
         message: Message,
@@ -239,44 +262,63 @@ impl CompletionModel for AnthropicCompletionModel {
 
             let mut content: Vec<String> = vec![];
             let mut tool_calls: Vec<ToolCall> = vec![];
-            let () = &response_json["content"].as_array().unwrap().iter().for_each(|c| {
-                match c["type"].as_str() {
+            let () = &response_json["content"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .for_each(|c| match c["type"].as_str() {
                     Some("text") => {
                         content.push(c["text"].as_str().unwrap().to_string());
-                    },
+                    }
                     Some("thinking") => {
                         let thought = c["thinking"].as_str().unwrap().to_string();
-                        let sig =   c["signature"].as_str().unwrap().to_string();
-                        content.push(format!("<sf_thinking>{thought}</sf_sig>{sig}</sf_thinking>"));
-                    },
+                        let sig = c["signature"].as_str().unwrap().to_string();
+                        content.push(format!(
+                            "<sf_thinking>{thought}</sf_sig>{sig}</sf_thinking>"
+                        ));
+                    }
                     Some("tool_use") => {
                         let id = c["id"].as_str().unwrap().to_string();
                         let name = c["name"].as_str().unwrap().to_string();
                         let arguments = c["input"].as_str().unwrap().to_string();
-                        tool_calls.push(ToolCall{ id, name, arguments });
-                    },
+                        tool_calls.push(ToolCall {
+                            id,
+                            name,
+                            arguments,
+                        });
+                    }
                     Some("redacted_thinking") => {
                         let data = c["data"].as_str().unwrap().to_string();
                         content.push(format!("<sf_r_thinking>{data}</sf_r_thinking>"));
-                    },
+                    }
                     _ => {}
-                }
-            });
+                });
             let content: String = content.join("");
             let usage_response = &response_json["usage"];
             let usage_parse_error =
                 CompletionError::ParseError("Failed to parse usage data from response".to_string());
-            let input_tokens = usage_response["input_tokens"].as_u64().ok_or(usage_parse_error.clone())?;
-            let output_tokens = usage_response["output_tokens"].as_u64().ok_or(usage_parse_error.clone())?;
+            let input_tokens = usage_response["input_tokens"]
+                .as_u64()
+                .ok_or(usage_parse_error.clone())?;
+            let output_tokens = usage_response["output_tokens"]
+                .as_u64()
+                .ok_or(usage_parse_error.clone())?;
             let token_usage = TokenUsage {
                 prompt_tokens: Some(input_tokens),
                 completion_tokens: Some(output_tokens),
                 total_tokens: Some(input_tokens + output_tokens),
             };
 
-            let tool_calls = if tool_calls.is_empty() {None} else {Some(tool_calls)};
+            let tool_calls = if tool_calls.is_empty() {
+                None
+            } else {
+                Some(tool_calls)
+            };
             Ok((
-                Message::Assistant { content, tool_calls, },
+                Message::Assistant {
+                    content,
+                    tool_calls,
+                },
                 token_usage,
             ))
         } else {
@@ -296,14 +338,31 @@ mod test {
     #[test]
     fn test_proper_message_conversion() {
         let st = "start<sf_thinking>think1</sf_sig>make</sf_thinking>middle<sf_r_thinking>think2</sf_r_thinking>end";
-        let crate_messages = Message::User { content: String::from(st), tool_responses: None };
+        let crate_messages = Message::User {
+            content: String::from(st),
+            tool_responses: None,
+        };
         let converted = Into::<AnthropicMessage>::into(crate_messages);
-        assert_eq!(converted, AnthropicMessage::user (vec![
-                ContentBlock::Text{ text: "start".to_string() },
-                ContentBlock::Thinking{ thinking: "think1".to_string(), signature: "make".to_string() },
-                ContentBlock::Text{ text: "middle".to_string() },
-                ContentBlock::RedactedThinking{ data: "think2".to_string() },
-                ContentBlock::Text{ text: "end".to_string() },
-        ]));
+        assert_eq!(
+            converted,
+            AnthropicMessage::user(vec![
+                ContentBlock::Text {
+                    text: "start".to_string()
+                },
+                ContentBlock::Thinking {
+                    thinking: "think1".to_string(),
+                    signature: "make".to_string()
+                },
+                ContentBlock::Text {
+                    text: "middle".to_string()
+                },
+                ContentBlock::RedactedThinking {
+                    data: "think2".to_string()
+                },
+                ContentBlock::Text {
+                    text: "end".to_string()
+                },
+            ])
+        );
     }
 }

@@ -1,12 +1,12 @@
 use glob::{glob, Pattern};
 #[cfg(feature = "pdf")]
 use pdf_extract::extract_text;
-#[cfg(feature = "pdf")]
-use tracing::error;
 use std::{
     io,
     path::{Path, PathBuf},
 };
+#[cfg(feature = "pdf")]
+use tracing::error;
 use tracing::{info, instrument};
 use walkdir::WalkDir;
 
@@ -95,7 +95,8 @@ pub(super) fn parse_file(file_path: &Path) -> io::Result<String> {
 }
 
 pub(super) fn load_initial(patterns: &[Pattern]) -> Vec<Document> {
-    let files = resolve_input_to_files(patterns.iter().map(glob::Pattern::as_str).collect()).unwrap();
+    let files =
+        resolve_input_to_files(patterns.iter().map(glob::Pattern::as_str).collect()).unwrap();
     let mut documents: Vec<Document> = vec![];
     for file in files {
         let data = parse_file(&file).unwrap();

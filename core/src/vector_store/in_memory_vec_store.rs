@@ -35,7 +35,11 @@ impl VectorStore for InMemoryVectorStore {
             .get(&id)
             .ok_or(VectorStoreError::EmbeddingNotFound)
             .cloned();
-        if res.is_ok() { debug!("Found embedding for document") } else { error!("Failed to find embedding for document") };
+        if res.is_ok() {
+            debug!("Found embedding for document")
+        } else {
+            error!("Failed to find embedding for document")
+        };
         res
     }
 

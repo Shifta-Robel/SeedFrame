@@ -1,5 +1,5 @@
-use regex::Regex;
 use super::ContentBlock;
+use regex::Regex;
 
 pub(crate) fn parse_content_blocks(input: &str) -> Vec<ContentBlock> {
     let re = Regex::new(r"(</?sf_(r_)?thinking>)|([^<]+)").unwrap();
@@ -24,10 +24,14 @@ pub(crate) fn parse_content_blocks(input: &str) -> Vec<ContentBlock> {
                     if tag == expected_end {
                         let content = std::mem::take(content);
                         result.push(if *is_redacted {
-                            ContentBlock::RedactedThinking{ data: content }
+                            ContentBlock::RedactedThinking { data: content }
                         } else {
-                            let thinking = content.split(thinking_signature_tag).collect::<Vec<&str>>();
-                            ContentBlock::Thinking{ thinking: thinking[0].to_string(), signature: thinking[1].to_string() }
+                            let thinking =
+                                content.split(thinking_signature_tag).collect::<Vec<&str>>();
+                            ContentBlock::Thinking {
+                                thinking: thinking[0].to_string(),
+                                signature: thinking[1].to_string(),
+                            }
                         });
                         current_block = None;
                     } else {
@@ -37,12 +41,16 @@ pub(crate) fn parse_content_blocks(input: &str) -> Vec<ContentBlock> {
                 None => {
                     if tag == thinking_tag.0 {
                         if !current_text.is_empty() {
-                            result.push(ContentBlock::Text{ text: std::mem::take(&mut current_text) });
+                            result.push(ContentBlock::Text {
+                                text: std::mem::take(&mut current_text),
+                            });
                         }
                         current_block = Some((false, String::new()));
                     } else if tag == redacted_thinking_tag.0 {
                         if !current_text.is_empty() {
-                            result.push(ContentBlock::Text{ text: std::mem::take(&mut current_text) });
+                            result.push(ContentBlock::Text {
+                                text: std::mem::take(&mut current_text),
+                            });
                         }
                         current_block = Some((true, String::new()));
                     } else {
@@ -71,7 +79,7 @@ pub(crate) fn parse_content_blocks(input: &str) -> Vec<ContentBlock> {
     }
 
     if !current_text.is_empty() {
-        result.push(ContentBlock::Text{ text: current_text });
+        result.push(ContentBlock::Text { text: current_text });
     }
 
     result
@@ -85,14 +93,23 @@ mod tests {
     fn test_parse_content_blocks() {
         let input = "hello world <sf_thinking> how are you</sf_sig>uuulala</sf_thinking> blabla<sf_r_thinking>ulalala</sf_r_thinking>";
         let result = parse_content_blocks(input);
-        
+
         let expected = vec![
-            ContentBlock::Text{ text: "hello world ".to_string() },
-            ContentBlock::Thinking{ thinking: " how are you".to_string(), signature: "uuulala".to_string() },
-            ContentBlock::Text{ text: " blabla".to_string() },
-            ContentBlock::RedactedThinking{ data: "ulalala".to_string() },
+            ContentBlock::Text {
+                text: "hello world ".to_string(),
+            },
+            ContentBlock::Thinking {
+                thinking: " how are you".to_string(),
+                signature: "uuulala".to_string(),
+            },
+            ContentBlock::Text {
+                text: " blabla".to_string(),
+            },
+            ContentBlock::RedactedThinking {
+                data: "ulalala".to_string(),
+            },
         ];
-        
+
         assert_eq!(result, expected);
     }
 
@@ -100,11 +117,11 @@ mod tests {
     fn test_no_tags() {
         let input = "just some regular text";
         let result = parse_content_blocks(input);
-        
-        let expected = vec![
-            ContentBlock::Text{ text: "just some regular text".to_string() },
-        ];
-        
+
+        let expected = vec![ContentBlock::Text {
+            text: "just some regular text".to_string(),
+        }];
+
         assert_eq!(result, expected);
     }
 
@@ -112,15 +129,26 @@ mod tests {
     fn test_multiple_tags() {
         let input = "start<sf_thinking>think1</sf_sig>sig</sf_thinking>middle<sf_r_thinking>think2</sf_r_thinking>end";
         let result = parse_content_blocks(input);
-        
+
         let expected = vec![
-            ContentBlock::Text{ text: "start".to_string() },
-            ContentBlock::Thinking{ thinking: "think1".to_string(), signature: "sig".to_string() },
-            ContentBlock::Text{ text: "middle".to_string() },
-            ContentBlock::RedactedThinking{ data: "think2".to_string() },
-            ContentBlock::Text{ text: "end".to_string() },
+            ContentBlock::Text {
+                text: "start".to_string(),
+            },
+            ContentBlock::Thinking {
+                thinking: "think1".to_string(),
+                signature: "sig".to_string(),
+            },
+            ContentBlock::Text {
+                text: "middle".to_string(),
+            },
+            ContentBlock::RedactedThinking {
+                data: "think2".to_string(),
+            },
+            ContentBlock::Text {
+                text: "end".to_string(),
+            },
         ];
-        
+
         assert_eq!(result, expected);
     }
 
@@ -128,12 +156,16 @@ mod tests {
     fn test_unclosed_tag() {
         let input = "text<sf_thinking>unclosed";
         let result = parse_content_blocks(input);
-        
+
         let expected = vec![
-            ContentBlock::Text{ text: "text".to_string() },
-            ContentBlock::Text{ text: "<sf_thinking>unclosed".to_string() },
+            ContentBlock::Text {
+                text: "text".to_string(),
+            },
+            ContentBlock::Text {
+                text: "<sf_thinking>unclosed".to_string(),
+            },
         ];
-        
+
         assert_eq!(result, expected);
     }
 }

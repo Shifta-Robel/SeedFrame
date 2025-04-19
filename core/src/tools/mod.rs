@@ -14,8 +14,12 @@ pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn args(&self) -> &[ToolArg];
-    async fn call(&self, args: &str, states: &DashMap<TypeId, Box<dyn Any + Send + Sync>>) -> Result<Value, ToolError>;
-        
+    async fn call(
+        &self,
+        args: &str,
+        states: &DashMap<TypeId, Box<dyn Any + Send + Sync>>,
+    ) -> Result<Value, ToolError>;
+
     fn output_schema(&self) -> Option<Value> {
         None
     }
@@ -41,7 +45,7 @@ pub enum ToolError {
     #[error(transparent)]
     JsonError(#[from] serde_json::Error),
     #[error(transparent)]
-    StateError(#[from] StateError)
+    StateError(#[from] StateError),
 }
 
 pub enum ExecutionStrategy {
@@ -86,7 +90,8 @@ impl ToolSet {
         Ok(())
     }
 
-    #[must_use] pub fn list_tools(&self) -> Vec<Box<dyn Tool>> {
+    #[must_use]
+    pub fn list_tools(&self) -> Vec<Box<dyn Tool>> {
         todo!()
     }
 
@@ -115,7 +120,8 @@ pub struct ToolArg {
 }
 
 impl ToolArg {
-    #[must_use] pub fn new<T: JsonSchema + Serialize>(name: &str, description: &str) -> Self {
+    #[must_use]
+    pub fn new<T: JsonSchema + Serialize>(name: &str, description: &str) -> Self {
         let settings = SchemaSettings::default().with(|s| {
             s.inline_subschemas = true;
         });
@@ -185,7 +191,8 @@ pub struct ToolResponse {
     pub content: serde_json::Value,
 }
 
-#[must_use] pub fn build_parameters_schema(args: &[ToolArg]) -> Value {
+#[must_use]
+pub fn build_parameters_schema(args: &[ToolArg]) -> Value {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
 

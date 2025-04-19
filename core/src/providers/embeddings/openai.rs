@@ -1,7 +1,7 @@
 use crate::embeddings::{model::EmbeddingModel, EmbedderError};
 use async_trait::async_trait;
 use reqwest::Client;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 const DEFAULT_API_KEY_VAR_NAME: &str = "OPENAI_EMBEDDING_API_KEY";
@@ -24,16 +24,23 @@ pub struct OpenAIEmbedding {
 }
 
 impl OpenAIEmbedding {
-    #[must_use] pub fn new(json_config: Option<&str>) -> Self {
+    #[must_use]
+    pub fn new(json_config: Option<&str>) -> Self {
         let (api_key_var, api_url, model) = if let Some(json) = json_config {
             let config: ModelConfig = serde_json::from_str(json).unwrap();
             (
-                config.api_key.unwrap_or(DEFAULT_API_KEY_VAR_NAME.to_string()),
+                config
+                    .api_key
+                    .unwrap_or(DEFAULT_API_KEY_VAR_NAME.to_string()),
                 config.api_url.unwrap_or(DEFAULT_URL.to_string()),
-                config.model.unwrap_or(DEFAULT_MODEL.to_string())
+                config.model.unwrap_or(DEFAULT_MODEL.to_string()),
             )
-        }else {
-            (DEFAULT_API_KEY_VAR_NAME.to_string(), DEFAULT_URL.to_string(), DEFAULT_MODEL.to_string())
+        } else {
+            (
+                DEFAULT_API_KEY_VAR_NAME.to_string(),
+                DEFAULT_URL.to_string(),
+                DEFAULT_MODEL.to_string(),
+            )
         };
         let api_key = std::env::var(&api_key_var)
             .unwrap_or_else(|_| panic!("Failed to fetch env var `{api_key_var}` !"));
@@ -63,7 +70,8 @@ impl EmbeddingModel for OpenAIEmbedding {
                 "input": data,
                 "model": self.model,
         });
-        let response = self.client
+        let response = self
+            .client
             .post(&self.api_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")

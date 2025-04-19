@@ -1,5 +1,6 @@
 use crate::completion::{
-    default_extractor_serializer, serialize_assistant, serialize_user, Client, CompletionError, CompletionModel, Extractor, Message, MessageHistory, TokenUsage
+    default_extractor_serializer, serialize_assistant, serialize_user, Client, CompletionError,
+    CompletionModel, Extractor, Message, MessageHistory, TokenUsage,
 };
 use crate::embeddings::Embedder;
 use crate::tools::{ToolCall, ToolResponse, ToolSet};
@@ -29,16 +30,21 @@ pub struct OpenAICompletionModel {
 }
 
 impl OpenAICompletionModel {
-    #[must_use] pub fn new(json_config: Option<&str>) -> Self {
+    #[must_use]
+    pub fn new(json_config: Option<&str>) -> Self {
         let (api_key_var, api_url, model) = if let Some(json) = json_config {
             let config: ModelConfig = serde_json::from_str(json).unwrap();
             (
                 config.api_key.unwrap_or(API_KEY_ENV_VAR.to_string()),
                 config.api_url.unwrap_or(URL.to_string()),
-                config.model.unwrap_or(DEFAULT_MODEL.to_string())
+                config.model.unwrap_or(DEFAULT_MODEL.to_string()),
             )
-        }else {
-            (API_KEY_ENV_VAR.to_string(), URL.to_string(), DEFAULT_MODEL.to_string())
+        } else {
+            (
+                API_KEY_ENV_VAR.to_string(),
+                URL.to_string(),
+                DEFAULT_MODEL.to_string(),
+            )
         };
         let api_key = std::env::var(&api_key_var)
             .unwrap_or_else(|_| panic!("Failed to fetch env var `{api_key_var}` !"));
@@ -105,7 +111,7 @@ impl CompletionModel for OpenAICompletionModel {
             DEFAULT_TEMP,
             DEFAULT_TOKENS,
             embedder_instances,
-            tools
+            tools,
         )
     }
     async fn send(
@@ -298,8 +304,8 @@ mod tests {
     use dashmap::DashMap;
     use serde_json::Value;
 
-    use crate::tools::{ExecutionStrategy, Tool, ToolArg, ToolError};
     use super::*;
+    use crate::tools::{ExecutionStrategy, Tool, ToolArg, ToolError};
 
     #[tokio::test]
     #[ignore]
@@ -407,7 +413,11 @@ For this test to be considered successful, reply with "okay" without the quotes,
 
         #[async_trait]
         impl Tool for JokeTool {
-            async fn call(&self, args: &str, _states: &DashMap<TypeId, Box<dyn Any + Send + Sync>>) -> Result<Value, ToolError> {
+            async fn call(
+                &self,
+                args: &str,
+                _states: &DashMap<TypeId, Box<dyn Any + Send + Sync>>,
+            ) -> Result<Value, ToolError> {
                 #[derive(serde::Deserialize)]
                 struct Params {
                     lang: String,
@@ -427,7 +437,11 @@ For this test to be considered successful, reply with "okay" without the quotes,
         }
         #[async_trait]
         impl Tool for PoemTool {
-            async fn call(&self, args: &str, _states: &DashMap<TypeId, Box<dyn Any + Send + Sync>>) -> Result<Value, ToolError> {
+            async fn call(
+                &self,
+                args: &str,
+                _states: &DashMap<TypeId, Box<dyn Any + Send + Sync>>,
+            ) -> Result<Value, ToolError> {
                 #[derive(serde::Deserialize)]
                 struct Params {
                     lenght: u32,

@@ -1,7 +1,7 @@
-use seedframe::embeddings::{model::EmbeddingModel, EmbedderError};
 use async_trait::async_trait;
 use reqwest::Client;
-use serde::{Serialize, Deserialize};
+use seedframe::embeddings::{model::EmbeddingModel, EmbedderError};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 const DEFAULT_API_KEY_VAR_NAME: &str = "VOYAGEAI_API_KEY";
@@ -15,7 +15,7 @@ struct ModelConfig {
     model: String,
 }
 
-/// Implementation of Seedframe's `EmbeddingModel` trait for [VoyageAI](https:).
+/// Implementation of Seedframe's `EmbeddingModel` trait for [Voyage AI](https://voyageai.com).
 ///
 /// This type is primarily designed to be used through the `#[embedder]` macro
 /// rather than being instantiated directly. The macro will handle the
@@ -26,7 +26,7 @@ struct ModelConfig {
 /// The model accepts the following configuration parameters:
 ///
 /// - `model`: String identifier for the model to use
-/// - `api_key_var`(optional): Environment variable name containing the API key 
+/// - `api_key_var`(optional): Environment variable name containing the API key
 /// - `api_url`(optional): Custom API endpoint URL
 ///
 /// # Examples
@@ -59,16 +59,27 @@ pub struct VoyageAIEmbedding {
 }
 
 impl VoyageAIEmbedding {
-    #[must_use] pub fn new(json_config: Option<&str>) -> Self {
+    /// Creates a new `VoyageEmbedder` from a JSON configuration string
+    ///
+    /// # Panics
+    /// This function will panic if:
+    ///  - The provided JSON is malformed and cannot be parsed
+    ///  - The JSON contains unknown fields
+    #[must_use]
+    pub fn new(json_config: Option<&str>) -> Self {
         let (api_key_var, api_url, model) = if let Some(json) = json_config {
             let config: ModelConfig = serde_json::from_str(json).unwrap();
             (
-                config.api_key_var.unwrap_or(DEFAULT_API_KEY_VAR_NAME.to_string()),
+                config
+                    .api_key_var
+                    .unwrap_or(DEFAULT_API_KEY_VAR_NAME.to_string()),
                 config.api_url.unwrap_or(DEFAULT_URL.to_string()),
-                config.model
+                config.model,
             )
-        }else {
-            panic!("VoyageAIEmbedding expects a config json with atleast the required model field!");
+        } else {
+            panic!(
+                "VoyageAIEmbedding expects a config json with atleast the required model field!"
+            );
         };
         let api_key = std::env::var(&api_key_var)
             .unwrap_or_else(|_| panic!("Failed to fetch env var `{api_key_var}` !"));
@@ -98,7 +109,8 @@ impl EmbeddingModel for VoyageAIEmbedding {
                 "input": data,
                 "model": self.model,
         });
-        let response = self.client
+        let response = self
+            .client
             .post(&self.api_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")

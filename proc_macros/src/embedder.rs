@@ -8,16 +8,15 @@ use thiserror::Error;
 struct EmbedderConfig {
     provider: syn::Type,
     #[darling(default)]
-    config: Option<JsonStr>
+    config: Option<JsonStr>,
 }
 
 #[derive(Debug, Clone)]
 struct JsonStr(serde_json::Value);
 impl FromMeta for JsonStr {
     fn from_string(value: &str) -> darling::Result<Self> {
-        let value: serde_json::Value = serde_json::from_str(value).map_err(|e| {
-            darling::Error::custom(format!("Invalid JSON: {}", e))
-        })?;
+        let value: serde_json::Value = serde_json::from_str(value)
+            .map_err(|e| darling::Error::custom(format!("Invalid JSON: {e}")))?;
 
         Ok(JsonStr(value))
     }
@@ -67,7 +66,6 @@ pub(crate) fn embedder_impl(
             #builder_impl
         }
     })
-
 }
 
 fn generate_builder(
@@ -140,7 +138,7 @@ fn generate_builder(
     let embedding_model_init = if let Some(json_str) = &config.config {
         let json_str = serde_json::to_string(&json_str.0).unwrap();
         quote! { ::std::sync::Arc::new(::std::boxed::Box::new(#t::new(Some(#json_str)))) }
-    }else {
+    } else {
         quote! { ::std::sync::Arc::new(::std::boxed::Box::new(#t::new(None))) }
     };
 
@@ -158,4 +156,3 @@ fn generate_builder(
         }
     })
 }
-

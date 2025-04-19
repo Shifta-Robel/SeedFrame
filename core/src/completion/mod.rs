@@ -3,7 +3,10 @@ use dashmap::DashMap;
 use schemars::gen::SchemaSettings;
 use serde::Serializer;
 use serde_json::json;
-use std::{any::{Any, TypeId}, sync::Arc};
+use std::{
+    any::{Any, TypeId},
+    sync::Arc,
+};
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::info;
@@ -71,7 +74,7 @@ pub enum CompletionError {
     ExtractorError(#[from] ExtractionError),
     /// Error with tool call states
     #[error(transparent)]
-    StateError(#[from] StateError)
+    StateError(#[from] StateError),
 }
 
 /// Types that can be deserialized from model completion responses.
@@ -206,19 +209,22 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
     }
 
     /// Execute the tool calls if the LLM responds with a Tool call request, `true` by default
-    #[must_use] pub fn execute_tools(mut self, execute: bool) -> Self {
+    #[must_use]
+    pub fn execute_tools(mut self, execute: bool) -> Self {
         self.execute_tools = execute;
         self
     }
 
     /// Wether to send any tool definitions with the prompt, `true` by default
-    #[must_use] pub fn with_tools(mut self, no_tools: bool) -> Self {
+    #[must_use]
+    pub fn with_tools(mut self, no_tools: bool) -> Self {
         self.with_tools = no_tools;
         self
     }
 
     /// Create a `Message::User` with the tool reponses and append it to the client history, `false` by default
-    #[must_use] pub fn append_tool_response(mut self, append: bool) -> Self {
+    #[must_use]
+    pub fn append_tool_response(mut self, append: bool) -> Self {
         self.append_tool_response = append;
         self
     }
@@ -226,14 +232,16 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
     /// Wether to retrieve and append the context to the prompt, true by default.
     /// If true, the client's vector store will get looked up for the top matches to the prompt and
     /// the context will get appended to the prompt before being sent.
-    #[must_use] pub fn with_context(mut self, append_context: bool) -> Self {
+    #[must_use]
+    pub fn with_context(mut self, append_context: bool) -> Self {
         self.with_context = append_context;
         self
     }
 
     /// Prompt the LLM with a custom history, and get a response.
     /// Response won't be stored in the client's history
-    #[must_use] pub fn one_shot(mut self, one_shot: bool, history: Option<MessageHistory>) -> Self {
+    #[must_use]
+    pub fn one_shot(mut self, one_shot: bool, history: Option<MessageHistory>) -> Self {
         self.one_shot = (one_shot, history);
         self
     }
@@ -283,7 +291,7 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
 
     /// Sends the prompt to the LLM
     pub async fn send(self) -> Result<Message, crate::error::Error> {
-        let tools = if self.with_tools && !self.client.tools.0.is_empty(){
+        let tools = if self.with_tools && !self.client.tools.0.is_empty() {
             Some(&*self.client.tools)
         } else {
             None
@@ -374,7 +382,7 @@ impl<M: CompletionModel + Send> Client<M> {
             temperature,
             max_tokens,
             token_usage: TokenUsage::default(),
-            states: DashMap::new()
+            states: DashMap::new(),
         }
     }
 
@@ -389,7 +397,8 @@ impl<M: CompletionModel + Send> Client<M> {
     }
 
     /// Returns a reference to the current message history
-    #[must_use] pub fn export_history(&self) -> &MessageHistory {
+    #[must_use]
+    pub fn export_history(&self) -> &MessageHistory {
         &self.history
     }
 
@@ -405,9 +414,9 @@ impl<M: CompletionModel + Send> Client<M> {
     pub fn with_state<T: Send + Sync + 'static>(self, state: T) -> Result<Self, CompletionError> {
         let type_id = state.type_id();
         if self.states.contains_key(&type_id) {
-            return Err(
-                CompletionError::StateError(
-                    StateError::AlreadyExists(format!("{:?}",std::any::type_name::<T>()))));
+            return Err(CompletionError::StateError(StateError::AlreadyExists(
+                format!("{:?}", std::any::type_name::<T>()),
+            )));
         }
         self.states.insert(type_id, Box::new(Arc::new(state)));
         Ok(self)
@@ -418,12 +427,13 @@ impl<M: CompletionModel + Send> Client<M> {
     /// # Errors
     /// Returns [`StateError::NotFound`] if no state of type `T` exists
     pub fn get_state<T: Send + Sync + 'static>(&self) -> Result<State<T>, StateError> {
-        let boxed = self.states.get(&TypeId::of::<T>())
+        let boxed = self
+            .states
+            .get(&TypeId::of::<T>())
             .ok_or(StateError::NotFound)?;
-        
-        let arc = boxed.downcast_ref::<Arc<T>>()
-            .ok_or(StateError::NotFound)?;
-        
+
+        let arc = boxed.downcast_ref::<Arc<T>>().ok_or(StateError::NotFound)?;
+
         Ok(State(arc.clone()))
     }
 
@@ -475,7 +485,10 @@ impl<M: CompletionModel + Send> Client<M> {
             }
             ExecutionStrategy::BestEffort => {
                 for call in calls {
-                    let tr = self.tools.call(&call.id, &call.name, &call.arguments, &self.states).await;
+                    let tr = self
+                        .tools
+                        .call(&call.id, &call.name, &call.arguments, &self.states)
+                        .await;
                     if let Ok(v) = tr {
                         values.push(v);
                     }

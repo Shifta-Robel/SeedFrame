@@ -111,10 +111,8 @@ pub(crate) fn loader_impl(
     let builder_impl = generate_builder(&config, &loader_type, struct_vis);
 
     let kind = match loader_type {
-        LoaderType::BuiltIn(t) => t,
-        LoaderType::External(t) => t,
+        LoaderType::BuiltIn(t) | LoaderType::External(t) => t,
     };
-
 
     Ok(quote! {
         #struct_vis struct #struct_ident{
@@ -143,14 +141,14 @@ enum LoaderType {
 
 fn validate_config(config: &LoaderConfig) -> Result<(), LoaderMacroError> {
     if config.kind.is_some() && config.external.is_some() {
-        Err(LoaderMacroError::ParseError(
-                darling::Error::custom(
-                    "Only one of the attributes `kind` or `external` is supported!")))?
+        Err(LoaderMacroError::ParseError(darling::Error::custom(
+            "Only one of the attributes `kind` or `external` is supported!",
+        )))?;
     }
     if config.kind.is_none() && config.external.is_none() {
-        Err(LoaderMacroError::ParseError(
-                darling::Error::custom(
-                    "Macro expects one of `kind` or `external` attributes to be specified!")))?
+        Err(LoaderMacroError::ParseError(darling::Error::custom(
+            "Macro expects one of `kind` or `external` attributes to be specified!",
+        )))?;
     }
 
     if let Some(kind) = &config.kind {
@@ -169,27 +167,27 @@ fn validate_config(config: &LoaderConfig) -> Result<(), LoaderMacroError> {
                     name.to_string(),
                     loader_type.to_string(),
                 ))
-            }
-            else {
+            } else {
                 Ok(())
             }
         };
         check_arg("path", &config.path)?;
-    }else if config.path.is_some() {
-        Err(LoaderMacroError::UnsupportedArgument( "path".to_string(), "external".to_string(),))?
+    } else if config.path.is_some() {
+        Err(LoaderMacroError::UnsupportedArgument(
+            "path".to_string(),
+            "external".to_string(),
+        ))?;
     };
     Ok(())
 }
 
 fn get_type(config: &LoaderConfig) -> Result<LoaderType, LoaderMacroError> {
     if let Some(kind) = &config.kind {
-        Ok(LoaderType::BuiltIn(
-            syn::Type::from_string(&BuiltinLoaderType::from_str(kind)?.to_string())?
-        ))
-    }else {
-        Ok(LoaderType::External(
-                config.external.clone().unwrap()
-        ))
+        Ok(LoaderType::BuiltIn(syn::Type::from_string(
+            &BuiltinLoaderType::from_str(kind)?.to_string(),
+        )?))
+    } else {
+        Ok(LoaderType::External(config.external.clone().unwrap()))
     }
 }
 
@@ -206,7 +204,7 @@ fn generate_builder(
                     Self { inner: (#t::new(vec![#path.to_string()]).unwrap().build().unwrap()) }
                 }
             }
-        },
+        }
         LoaderType::External(t) => {
             if let Some(json_str) = &config.config {
                 quote! {
@@ -214,7 +212,7 @@ fn generate_builder(
                         Self { inner: (#t::new(Some(#json_str)).unwrap()) }
                     }
                 }
-            }else {
+            } else {
                 quote! {
                     #vis fn build() -> Self {
                         Self { inner: (#t::new(None).unwrap()) }

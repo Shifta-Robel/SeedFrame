@@ -8,6 +8,7 @@ use seedframe::loader::Loader;
 use async_trait::async_trait;
 use chrono::Utc;
 use scraper::{Html, Selector};
+use serde::de::Error;
 use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -67,8 +68,11 @@ impl WebScraper {
     /// This function will panic if:
     ///  - The provided JSON is malformed and cannot be parsed
     ///  - The JSON contains unknown fields
-    pub fn new(json_str: &str) -> Result<Self, serde_json::Error> {
-        let config: Config = serde_json::from_str(json_str)?;
+    pub fn new(json_str: Option<&str>) -> Result<Self, serde_json::Error> {
+        if json_str.is_none() {
+            Err(serde_json::Error::custom("Expected a json config with atleast the `url` field specified! "))?
+        }
+        let config: Config = serde_json::from_str(json_str.unwrap())?;
         let (sender, _) = broadcast::channel(1);
         let sender = Arc::new(Mutex::new(sender));
 

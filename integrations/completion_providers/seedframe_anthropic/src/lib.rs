@@ -22,7 +22,7 @@ struct ModelConfig {
     model: Option<String>,
 }
 
-/// Implementation of Seedframe's `CompletionModel` trait for [Anthropic](https).
+/// Implementation of Seedframe's `CompletionModel` trait for [Anthropic](https://anthropic.com).
 ///
 /// This type is primarily designed to be used through the `#[client]` macro
 /// rather than being instantiated directly. The macro will handle the
@@ -49,7 +49,7 @@ struct ModelConfig {
 ///     config = r#"{
 ///       "model": "claude-3-7-sonnet-20250219",
 ///       "api_key_var": "ENV_VAR",
-///       "api_url": "https://api.anthropic.com/v1/messages "
+///       "api_url": "https://api.anthropic.com/v1/messages"
 ///     }"#
 /// )]
 /// struct AnthropicClient;

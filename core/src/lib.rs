@@ -177,7 +177,6 @@
 //!
 //! Name | Description | Default?
 //! ---|---|---
-//! `pinecone` | enables the pinecone vectorstore integration | No
 //! `pdf` | enables file loaders to parse PDFs | No
 
 /// Language model completion and conversation management

@@ -243,7 +243,7 @@ mod tests {
     #[tokio::test]
     async fn test_invalid_url_handling() {
         let json = r#"{"url": "invalid://url", "interval": null}"#;
-        let scraper = WebScraper::new(json).unwrap();
+        let scraper = WebScraper::new(Some(json)).unwrap();
         let mut receiver = scraper.subscribe().await;
 
         let result = time::timeout(Duration::from_secs(1), receiver.recv()).await;

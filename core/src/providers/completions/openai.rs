@@ -312,7 +312,7 @@ mod tests {
     async fn simple_openai_completion_request() {
         let model = "gpt-4o-mini".to_string();
 
-        let mut openai_completion_model = OpenAICompletionModel::new(None, None, model);
+        let mut openai_completion_model = OpenAICompletionModel::new(None);
 
         let response = openai_completion_model
             .send(
@@ -353,7 +353,7 @@ For this test to be considered successful, reply with "okay" without the quotes,
         tracing_subscriber::fmt().init();
         let model = "gpt-4o-mini".to_string();
 
-        let mut openai_completion_model = OpenAICompletionModel::new(None, None, model);
+        let mut openai_completion_model = OpenAICompletionModel::new(None);
         let response = openai_completion_model
             .send(
                 Message::User {

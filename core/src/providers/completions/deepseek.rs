@@ -238,7 +238,7 @@ mod tests {
         tracing_subscriber::fmt().init();
         let model = "deepseek".to_string();
 
-        let mut deepseek_completion_model = DeepseekCompletionModel::new(None, None, model);
+        let mut deepseek_completion_model = DeepseekCompletionModel::new(None);
 
         let response = deepseek_completion_model
             .send(

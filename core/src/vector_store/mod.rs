@@ -1,13 +1,9 @@
-#[cfg(feature = "pinecone")]
-use ::pinecone_sdk::utils::errors::PineconeError;
 use async_trait::async_trait;
 use thiserror::Error;
 
 use super::embeddings::embedding::Embedding;
 
 pub mod in_memory_vec_store;
-#[cfg(feature = "pinecone")]
-pub mod pinecone;
 
 pub use in_memory_vec_store::InMemoryVectorStore;
 
@@ -19,16 +15,8 @@ pub enum VectorStoreError {
     FailedUpsert(String),
     #[error("Embedding not found")]
     EmbeddingNotFound,
-    #[cfg(feature = "pinecone")]
-    #[error("Pinecone error: {0}")]
-    Pinecone(String),
-}
-
-#[cfg(feature = "pinecone")]
-impl From<PineconeError> for VectorStoreError {
-    fn from(value: PineconeError) -> Self {
-        Self::Pinecone(value.to_string())
-    }
+    #[error("Provider error: {0}")]
+    Provider(String),
 }
 
 #[async_trait]

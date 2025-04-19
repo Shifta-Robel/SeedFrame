@@ -235,7 +235,7 @@ mod tests {
         tracing_subscriber::fmt().init();
         let model = "grok-2-latest".to_string();
 
-        let mut xai_completion_model = XaiCompletionModel::new(None, None, model);
+        let mut xai_completion_model = XaiCompletionModel::new(None);
 
         let response = xai_completion_model
             .send(

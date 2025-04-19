@@ -1,10 +1,11 @@
 use seedframe::prelude::*;
 use seedframe::providers::{completions::OpenAI, embeddings::OpenAIEmbedding};
+use seedframe::vector_store::InMemoryVectorStore;
 
 #[loader(kind = "FileOnceLoader", path = "/tmp/data/**/*.txt")]
 pub struct MyLoader;
 
-#[vector_store(kind = "InMemoryVectorStore")]
+#[vector_store(store = "InMemoryVectorStore")]
 pub struct MyVectorStore;
 
 #[embedder(provider = "OpenAIEmbedding")]

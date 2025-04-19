@@ -13,7 +13,18 @@ struct LoaderConfig {
     #[darling(default)]
     external: Option<syn::Type>,
     #[darling(default)]
-    config: Option<String>,
+    config: Option<JsonStr>,
+}
+
+#[derive(Debug, Clone)]
+struct JsonStr(serde_json::Value);
+impl FromMeta for JsonStr {
+    fn from_string(value: &str) -> darling::Result<Self> {
+        let value: serde_json::Value = serde_json::from_str(value)
+            .map_err(|e| darling::Error::custom(format!("Invalid JSON: {e}")))?;
+
+        Ok(JsonStr(value))
+    }
 }
 
 #[derive(Debug, Error)]
@@ -207,6 +218,7 @@ fn generate_builder(
         }
         LoaderType::External(t) => {
             if let Some(json_str) = &config.config {
+                let json_str = serde_json::to_string(&json_str.0).unwrap();
                 quote! {
                     #vis fn build() -> Self {
                         Self { inner: (#t::new(Some(#json_str)).unwrap()) }

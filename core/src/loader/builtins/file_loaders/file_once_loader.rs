@@ -80,6 +80,12 @@ pub struct FileOnceLoader {
     sent: AtomicBool,
 }
 
+impl FileOnceLoader {
+    pub fn new(glob_patterns: Vec<String>) -> Result<FileOnceLoaderBuilder, FileLoaderError> {
+        FileOnceLoaderBuilder::new(glob_patterns)
+    }
+}
+
 #[async_trait]
 impl Loader for FileOnceLoader {
     #[instrument(fields(self = format!("FileOnceLoader {{sent: {}}}", self.sent.load(Ordering::Acquire))))]

@@ -1,153 +1,30 @@
 use darling::{ast::NestedMeta, FromMeta};
 use proc_macro2::TokenStream;
 use quote::quote;
-use std::fmt::Display;
 use thiserror::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct VectorStoreConfig {
-    kind: String,
     #[darling(default)]
-    host: Option<String>,
+    store: Option<syn::Type>,
     #[darling(default)]
-    namespace: Option<String>,
-    #[darling(default)]
-    env_var: Option<String>,
-    #[darling(default)]
-    source_tag: Option<String>,
-}
-
-#[derive(Debug, Error)]
-pub(crate) enum VectorStoreMacroError {
-    #[error("Unknown VectorStore kind: '{0}'. valid options are InMemoryVectorStore")]
-    UnknownVectorStore(String),
-    #[error("Failed to parse vector_store macro: ")]
-    ParseError(#[from] darling::Error),
-    #[error("Unsupported argument '{0}' for '{1}' vector store type")]
-    UnsupportedArgument(String, String),
-    #[error("Missing required argument '{0}' for '{1}' vector_store type")]
-    MissingArgument(String, String),
+    config: Option<JsonStr>
 }
 
 #[derive(Debug, Clone)]
-enum VectorStoreType {
-    InMemoryVectorStore,
-    Pinecone,
-}
+struct JsonStr(serde_json::Value);
+impl FromMeta for JsonStr {
+    fn from_string(value: &str) -> darling::Result<Self> {
+        let value: serde_json::Value = serde_json::from_str(value)
+            .map_err(|e| darling::Error::custom(format!("Invalid JSON: {e}")))?;
 
-impl Display for VectorStoreType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::InMemoryVectorStore =>
-                    "seedframe::vector_store::in_memory_vec_store::InMemoryVectorStore",
-                Self::Pinecone => "seedframe::vector_store::pinecone::PineconeVectorStore",
-            }
-        )
+        Ok(JsonStr(value))
     }
 }
-
-impl VectorStoreType {
-    fn from_str(kind: &str) -> Result<Self, VectorStoreMacroError> {
-        match kind {
-            "InMemoryVectorStore" => Ok(Self::InMemoryVectorStore),
-            "pinecone" => Ok(Self::Pinecone),
-            unknown => Err(VectorStoreMacroError::UnknownVectorStore(
-                unknown.to_string(),
-            )),
-        }
-    }
-
-    fn required_args(&self) -> &'static [&'static str] {
-        match self {
-            Self::InMemoryVectorStore => &[],
-            Self::Pinecone => &["host"],
-        }
-    }
-
-    fn supported_args(&self) -> &'static [&'static str] {
-        match self {
-            Self::InMemoryVectorStore => &[],
-            Self::Pinecone => &["host", "namespace", "env_var", "source_tag"],
-        }
-    }
-}
-
-fn validate_config(
-    config: &VectorStoreConfig,
-    vector_store_type: &VectorStoreType,
-) -> Result<(), VectorStoreMacroError> {
-    let required = vector_store_type.required_args();
-    let supported = vector_store_type.supported_args();
-    let check_arg = |name: &str, value: &Option<String>| {
-        if value.is_none() && required.contains(&name) {
-            Err(VectorStoreMacroError::MissingArgument(
-                name.to_string(),
-                vector_store_type.to_string(),
-            ))
-        } else if value.is_some() && !supported.contains(&name) {
-            Err(VectorStoreMacroError::UnsupportedArgument(
-                name.to_string(),
-                vector_store_type.to_string(),
-            ))
-        } else {
-            Ok(())
-        }
-    };
-
-    check_arg("host", &config.host)?;
-    check_arg("namespace", &config.namespace)?;
-    check_arg("env_var", &config.env_var)?;
-    check_arg("source_tag", &config.source_tag)?;
-    Ok(())
-}
-
-fn generate_builder(
-    vector_store_type: &VectorStoreType,
-    config: &VectorStoreConfig,
-    vis: &syn::Visibility,
-) -> proc_macro2::TokenStream {
-    match vector_store_type {
-        VectorStoreType::InMemoryVectorStore => {
-            quote! {
-                #vis async fn build() -> Result<Self, seedframe::vector_store::VectorStoreError> {
-                    Ok(Self {
-                        inner: (seedframe::vector_store::in_memory_vec_store::InMemoryVectorStore::new())
-                    })
-                }
-            }
-        }
-        VectorStoreType::Pinecone => {
-            let host: &str = config.host.as_ref().unwrap();
-            let env: Option<String> = config.env_var.clone();
-            let source_tag: Option<String> = config.source_tag.clone();
-            let namespace: Option<String> = config.namespace.clone();
-            //
-            let host_expr =
-                syn::parse_str::<syn::Expr>(&format!("\"{host}\".to_string()")).unwrap();
-            let env_expr = option_expr(env);
-            let source_tag_expr = option_expr(source_tag);
-            let namespace_expr = option_expr(namespace);
-            quote! {
-                #vis async fn build() -> Result<Self, seedframe::vector_store::VectorStoreError> {
-                    Ok(Self {
-                        inner: PineconeVectorStore::new(#env_expr, #host_expr, #source_tag_expr, #namespace_expr).await?,
-                    })
-                }
-            }
-        }
-    }
-}
-
-fn option_expr(opt: Option<String>) -> syn::Expr {
-    let expr = if let Some(v) = opt {
-        &format!("Some(\"{v}\".to_string())")
-    } else {
-        "None"
-    };
-    syn::parse_str(expr).unwrap()
+#[derive(Debug, Error)]
+pub(crate) enum VectorStoreMacroError {
+    #[error(transparent)]
+    ParseError(#[from] darling::Error),
 }
 
 pub(crate) fn vector_store_impl(
@@ -174,13 +51,9 @@ pub(crate) fn vector_store_impl(
         }
     };
 
-    let vector_store_type = VectorStoreType::from_str(&config.kind)?;
-    validate_config(&config, &vector_store_type)?;
-
     let (struct_ident, struct_vis) = (&input.ident, &input.vis);
-    let builder_impl = generate_builder(&vector_store_type, &config, struct_vis);
-    let kind: syn::Type =
-        syn::parse_str(&vector_store_type.to_string()).expect("Failed to parse type");
+    let kind = config.store.clone().unwrap();
+    let builder_impl = generate_builder(&config, &kind, struct_vis);
 
     Ok(quote! {
         #struct_vis struct #struct_ident{
@@ -191,4 +64,24 @@ pub(crate) fn vector_store_impl(
             #builder_impl
         }
     })
+}
+
+fn generate_builder(
+    config: &VectorStoreConfig,
+    kind: &syn::Type,
+    vis: &syn::Visibility,
+) -> proc_macro2::TokenStream {
+    let init_store = if let Some(config) = &config.config {
+        let config = serde_json::to_string(&config.0).unwrap();
+        quote!{ #kind::new(Some(#config)).await.unwrap() }
+    }else {
+        quote!{ #kind::new(None).await.unwrap() }
+    };
+    quote! {
+        #vis async fn build() -> Result<Self, seedframe::vector_store::VectorStoreError> {
+            Ok(Self {
+                inner: #init_store 
+            })
+        }
+    }
 }

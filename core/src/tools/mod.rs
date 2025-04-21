@@ -111,7 +111,7 @@ impl ToolSet {
 
     /// Executes a tool with the given arguments and state context.
     ///
-    /// # Arguments 
+    /// # Arguments
     /// - `id`: identifier for this tool call
     /// - `name`: The registered name of the tool to execute
     /// - `args`: JSON-formatted string containing tool arguments

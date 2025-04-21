@@ -55,7 +55,7 @@ impl OpenAICompletionModel {
                 DEFAULT_MODEL.to_string(),
             )
         };
-        let api_key = match std::env::var(&api_key_var){
+        let api_key = match std::env::var(&api_key_var) {
             Ok(key) => key,
             Err(e) => {
                 let e = format!("Failed to fetch env var `{api_key_var}`!, {e}");
@@ -162,7 +162,10 @@ impl CompletionModel for OpenAICompletionModel {
             let tools_serialized: Vec<serde_json::Value> =
                 tools.0.iter().map(|t| t.default_serializer()).collect();
             if let Some(obj) = request_body.as_object_mut() {
-                info!(tool_count = tools_serialized.len(), "Including tools in request");
+                info!(
+                    tool_count = tools_serialized.len(),
+                    "Including tools in request"
+                );
                 obj.insert(
                     "tools".to_string(),
                     serde_json::Value::Array(tools_serialized),
@@ -189,14 +192,11 @@ impl CompletionModel for OpenAICompletionModel {
         debug!(%status, "Received API response");
 
         if status.is_success() {
-            let response_json: serde_json::Value = response
-                .json()
-                .await
-                .map_err(|e| {
-                    error!(error = ?e, "Failed to parse response JSON");
-                    // error!("{}",format!("Failed to parse response as json: {:?}",e));
-                    CompletionError::ParseError(e.to_string())
-                })?;
+            let response_json: serde_json::Value = response.json().await.map_err(|e| {
+                error!(error = ?e, "Failed to parse response JSON");
+                // error!("{}",format!("Failed to parse response as json: {:?}",e));
+                CompletionError::ParseError(e.to_string())
+            })?;
 
             let resp_msg_json = &response_json["choices"][0]["message"]["content"];
             let mut response_message = String::new();
@@ -227,7 +227,7 @@ impl CompletionModel for OpenAICompletionModel {
                                 arguments,
                             }
                         })
-                    .collect();
+                        .collect();
                     info!(tool_call_count = count, "Parsed tool calls");
                     result
                 });
@@ -301,7 +301,10 @@ impl CompletionModel for OpenAICompletionModel {
             .into_iter()
             .map(Into::<OpenAIMessage>::into)
             .collect();
-        info!(message_count = messages.len(), "Preparing extraction request");
+        info!(
+            message_count = messages.len(),
+            "Preparing extraction request"
+        );
 
         let extractor = default_extractor_serializer::<T>().map_err(|e| {
             error!(error = ?e, "Failed to serialize extractor");
@@ -346,25 +349,27 @@ impl CompletionModel for OpenAICompletionModel {
             return Err(CompletionError::ProviderError(status.into(), error_msg));
         }
 
-        let response_json: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| {
-                error!(error = ?e, "Failed to parse extraction response JSON");
-                CompletionError::ParseError(e.to_string())})?;
+        let response_json: serde_json::Value = response.json().await.map_err(|e| {
+            error!(error = ?e, "Failed to parse extraction response JSON");
+            CompletionError::ParseError(e.to_string())
+        })?;
 
         let extracted_str = response_json["choices"][0]["message"]["content"]
             .as_str()
             .ok_or_else(|| {
                 error!("Missing content in extraction response");
-                CompletionError::ParseError("Missing content".to_string())})?;
+                CompletionError::ParseError("Missing content".to_string())
+            })?;
 
         let extracted: T = serde_json::from_str(extracted_str)
             .map_err(|e| {
                 error!(error = ?e, raw_response = %extracted_str, "Failed to deserialize extracted content");
                 CompletionError::ParseError(e.to_string())})?;
 
-        info!(extractor_type = std::any::type_name::<T>(), "Successfully extracted data");
+        info!(
+            extractor_type = std::any::type_name::<T>(),
+            "Successfully extracted data"
+        );
         Ok(extracted)
     }
 }

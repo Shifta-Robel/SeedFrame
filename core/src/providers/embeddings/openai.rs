@@ -51,7 +51,7 @@ impl OpenAIEmbedding {
                 DEFAULT_MODEL.to_string(),
             )
         };
-        let api_key = match std::env::var(&api_key_var){
+        let api_key = match std::env::var(&api_key_var) {
             Ok(key) => key,
             Err(e) => {
                 let e = format!("Failed to fetch env var `{api_key_var}`!, {e}");
@@ -94,7 +94,10 @@ impl EmbeddingModel for OpenAIEmbedding {
                 "input": data,
                 "model": self.model,
         });
-        debug!(request_body.input_length = data.len(), "Sending embedding request");
+        debug!(
+            request_body.input_length = data.len(),
+            "Sending embedding request"
+        );
         let response = self
             .client
             .post(&self.api_url)

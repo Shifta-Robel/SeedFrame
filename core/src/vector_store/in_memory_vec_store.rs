@@ -20,7 +20,9 @@ impl InMemoryVectorStore {
     #[allow(clippy::unused_async)]
     pub async fn new(json_config: Option<&str>) -> Result<Self, serde_json::Error> {
         if json_config.is_some() {
-            Err(serde_json::Error::custom("`InMemoryVectorStore` doesnt expect a config json!"))?;
+            Err(serde_json::Error::custom(
+                "`InMemoryVectorStore` doesnt expect a config json!",
+            ))?;
         }
         info!("Creating a new InMemoryVectorStore");
         Ok(Self {

@@ -1,9 +1,6 @@
 pub mod embedding;
 pub mod model;
-use crate::{
-    loader::LoaderInstance,
-    vector_store::VectorStore,
-};
+use crate::{loader::LoaderInstance, vector_store::VectorStore};
 use embedding::Embedding;
 use model::EmbeddingModel;
 use std::sync::Arc;
@@ -69,16 +66,22 @@ impl Embedder {
                     } else {
                         embedding_model.embed(&doc.data).await.unwrap()
                     };
-                    match vector_store.lock().await
+                    match vector_store
+                        .lock()
+                        .await
                         .store(Embedding {
                             id: doc.id.clone(),
                             embedded_data,
                             raw_data: doc.data,
-                        }).await
+                        })
+                        .await
                     {
                         Ok(()) => {
-                            info!("Added embedding for document {} to the vector store", &doc.id);
-                        },
+                            info!(
+                                "Added embedding for document {} to the vector store",
+                                &doc.id
+                            );
+                        }
                         Err(e) => {
                             error!(error = ?e, "Failed to store embedding for document {}", &doc.id);
                             panic!("{e}");
@@ -106,6 +109,11 @@ impl Embedder {
         top_n: usize,
     ) -> Result<Vec<Embedding>, crate::error::Error> {
         let query = self.embedding_model.embed(query).await?;
-        self.vector_store.lock().await.top_n(&query, top_n).await.map_err(Into::into)
+        self.vector_store
+            .lock()
+            .await
+            .top_n(&query, top_n)
+            .await
+            .map_err(Into::into)
     }
 }

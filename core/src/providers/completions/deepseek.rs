@@ -57,7 +57,7 @@ impl DeepseekCompletionModel {
                 DEFAULT_MODEL.to_string(),
             )
         };
-        let api_key = match std::env::var(&api_key_var){
+        let api_key = match std::env::var(&api_key_var) {
             Ok(key) => key,
             Err(e) => {
                 let e = format!("Failed to fetch env var `{api_key_var}`!, {e}");
@@ -164,7 +164,10 @@ impl CompletionModel for DeepseekCompletionModel {
             let tools_serialized: Vec<serde_json::Value> =
                 tools.0.iter().map(|t| t.default_serializer()).collect();
             if let Some(obj) = request_body.as_object_mut() {
-                info!(tool_count = tools_serialized.len(), "Including tools in request");
+                info!(
+                    tool_count = tools_serialized.len(),
+                    "Including tools in request"
+                );
                 obj.insert(
                     "tools".to_string(),
                     serde_json::Value::Array(tools_serialized),
@@ -190,13 +193,10 @@ impl CompletionModel for DeepseekCompletionModel {
         debug!(%status, "Received API response");
 
         if status.is_success() {
-            let response_json: serde_json::Value = response
-                .json()
-                .await
-                .map_err(|e| {
-                    error!(error = ?e, "Failed to parse response JSON");
-                    CompletionError::ParseError(e.to_string())
-                })?;
+            let response_json: serde_json::Value = response.json().await.map_err(|e| {
+                error!(error = ?e, "Failed to parse response JSON");
+                CompletionError::ParseError(e.to_string())
+            })?;
 
             let response_message = response_json["choices"][0]["message"]["content"]
                 .as_str()
@@ -223,7 +223,7 @@ impl CompletionModel for DeepseekCompletionModel {
                                 arguments,
                             }
                         })
-                    .collect();
+                        .collect();
                     info!(tool_call_count = count, "Parsed tool calls");
                     result
                 });

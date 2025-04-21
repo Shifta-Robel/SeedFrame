@@ -204,7 +204,7 @@ pub mod loader;
 /// Convenience prelude exports
 ///
 /// Re-exports commonly used types:
-/// - macros from seedframe_macros
+/// - macros from `seedframe_macros`
 /// - `completion::State`
 pub mod prelude;
 

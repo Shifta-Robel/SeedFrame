@@ -151,7 +151,7 @@ fn generate_builder(
                     vec![#loader_instances],
                     #vector_store_instanciated,
                     #embedding_model_init,
-                ).await.unwrap()
+                ).await
             }
         }
     })

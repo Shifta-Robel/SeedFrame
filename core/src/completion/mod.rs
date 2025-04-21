@@ -54,6 +54,7 @@ pub struct TokenUsage {
 
 pub(crate) type MessageHistory = Vec<Message>;
 
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone, Error)]
 /// Errors that can happen during completion
 pub enum CompletionError {
@@ -102,6 +103,7 @@ pub enum StateError {
 }
 
 /// Core trait defining the interface for completion models
+#[allow(clippy::module_name_repetitions)]
 #[async_trait]
 pub trait CompletionModel: Send {
     /// Constructs a new [`Client`] with this model
@@ -184,6 +186,7 @@ pub struct Client<M: CompletionModel> {
     max_tokens: usize,
 }
 
+#[allow(clippy::struct_excessive_bools)]
 /// Builder for constructing and executing completion prompts
 pub struct PromptBuilder<'a, M: CompletionModel> {
     prompt: String,
@@ -289,7 +292,10 @@ impl<'a, M: CompletionModel> PromptBuilder<'a, M> {
             .map_err(Into::into)
     }
 
-    /// Sends the prompt to the LLM
+    /// Builds the prompt and sends it to the completion model 
+    /// 
+    /// # Errors
+    /// This method will error if it fails to send the prompt or tool calls fail
     pub async fn send(self) -> Result<Message, crate::error::Error> {
         let tools = if self.with_tools && !self.client.tools.0.is_empty() {
             Some(&*self.client.tools)
@@ -564,7 +570,7 @@ impl<M: CompletionModel + Send> Client<M> {
             .map_err(crate::error::Error::from)
     }
 
-    async fn get_context(&self, prompt: &str) -> Result<Option<String>, VectorStoreError> {
+    async fn get_context(&self, prompt: &str) -> Result<Option<String>, crate::error::Error> {
         if self.embedders.is_empty() {
             return Ok(None);
         }
@@ -645,6 +651,9 @@ fn process_json_value(value: &mut serde_json::Value) {
 }
 
 /// Serializes user messages, ignoring tool call responses
+///
+/// # Errors
+/// If serializer fails
 pub fn serialize_user<S>(
     content: &str,
     _tool_calls: &Option<Vec<ToolResponse>>,
@@ -657,6 +666,9 @@ where
 }
 
 /// Serializes assistant messages with integrated tool call information
+///
+/// # Errors
+/// If serializer fails
 pub fn serialize_assistant<S>(
     content: &str,
     tool_calls: &Option<Vec<ToolCall>>,

@@ -5,8 +5,10 @@ use super::embeddings::embedding::Embedding;
 
 pub mod in_memory_vec_store;
 
+#[allow(clippy::module_name_repetitions)]
 pub use in_memory_vec_store::InMemoryVectorStore;
 
+#[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum VectorStoreError {
     #[error("Failed to create store: {0}")]

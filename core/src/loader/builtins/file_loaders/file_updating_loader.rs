@@ -25,6 +25,7 @@ use super::{utils::load_initial, FileLoaderError};
 const DEFAULT_CHANNEL_CAPACITY: usize = 20;
 const DEBOUNCE_DURATION_MILLIS: u64 = 500;
 
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug)]
 /// A builder for constructing a `FileUpdatingLoader`.
 ///

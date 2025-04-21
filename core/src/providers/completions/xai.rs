@@ -24,6 +24,7 @@ struct ModelConfig {
     model: Option<String>,
 }
 
+#[allow(clippy::module_name_repetitions)]
 pub struct XaiCompletionModel {
     api_key: String,
     api_url: String,

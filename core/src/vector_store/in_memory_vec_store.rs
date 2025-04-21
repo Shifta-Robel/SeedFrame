@@ -13,6 +13,11 @@ pub struct InMemoryVectorStore {
 }
 
 impl InMemoryVectorStore {
+    /// Creates a new instance of `InMemoryVectorStore`
+    ///
+    /// # Errors
+    /// Errors if `json_config` isn't `None`
+    #[allow(clippy::unused_async)]
     pub async fn new(json_config: Option<&str>) -> Result<Self, serde_json::Error> {
         if json_config.is_some() {
             Err(serde_json::Error::custom("`InMemoryVectorStore` doesnt expect a config json!"))?;
@@ -34,9 +39,9 @@ impl VectorStore for InMemoryVectorStore {
             .ok_or(VectorStoreError::EmbeddingNotFound)
             .cloned();
         if res.is_ok() {
-            debug!("Found embedding for document")
+            debug!("Found embedding for document");
         } else {
-            error!("Failed to find embedding for document")
+            error!("Failed to find embedding for document");
         };
         res
     }

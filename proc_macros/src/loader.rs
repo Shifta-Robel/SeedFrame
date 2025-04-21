@@ -6,20 +6,32 @@ use thiserror::Error;
 
 #[derive(Debug, FromMeta, Clone)]
 struct LoaderConfig {
-    kind: String,
     #[darling(default)]
-    url: Option<String>,
+    kind: Option<String>,
     #[darling(default)]
     path: Option<String>,
     #[darling(default)]
-    interval: Option<u64>,
+    external: Option<syn::Type>,
+    #[darling(default)]
+    config: Option<JsonStr>,
+}
+
+#[derive(Debug, Clone)]
+struct JsonStr(serde_json::Value);
+impl FromMeta for JsonStr {
+    fn from_string(value: &str) -> darling::Result<Self> {
+        let value: serde_json::Value = serde_json::from_str(value)
+            .map_err(|e| darling::Error::custom(format!("Invalid JSON: {e}")))?;
+
+        Ok(JsonStr(value))
+    }
 }
 
 #[derive(Debug, Error)]
 pub(crate) enum LoaderMacroError {
-    #[error("Unknown Loader kind: '{0}'. valid options are FileOnceLoader,FileUpdatingLoader,HttpOnceLoader")]
+    #[error("Unknown Loader kind: '{0}'. valid options are FileOnceLoader,FileUpdatingLoader")]
     UnknownLoader(String),
-    #[error("Failed to parse loader macro: ")]
+    #[error(transparent)]
     ParseError(#[from] darling::Error),
     #[error("Unsupported argument '{0}' for '{1}' loader type")]
     UnsupportedArgument(String, String),
@@ -27,11 +39,11 @@ pub(crate) enum LoaderMacroError {
     MissingArgument(String, String),
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone)]
 enum BuiltinLoaderType {
     FileOnceLoader,
     FileUpdatingLoader,
-    HttpOnceLoader,
 }
 
 impl Display for BuiltinLoaderType {
@@ -40,9 +52,10 @@ impl Display for BuiltinLoaderType {
             f,
             "{}",
             match self {
-                Self::FileOnceLoader => "seedframe::loader::builtins::file_loaders::file_once_loader::FileOnceLoader",
-                Self::FileUpdatingLoader => "seedframe::loader::builtins::file_loaders::file_updating_loader::FileUpdatingLoader",
-                Self::HttpOnceLoader => "HttpOnceLoader",
+                Self::FileOnceLoader =>
+                    "seedframe::loader::builtins::file_loaders::file_once_loader::FileOnceLoader",
+                Self::FileUpdatingLoader =>
+                    "seedframe::loader::builtins::file_loaders::file_updating_loader::FileUpdatingLoader",
             }
         )
     }
@@ -53,78 +66,18 @@ impl BuiltinLoaderType {
         match kind {
             "FileOnceLoader" => Ok(Self::FileOnceLoader),
             "FileUpdatingLoader" => Ok(Self::FileUpdatingLoader),
-            "HttpOnceLoader" => Ok(Self::HttpOnceLoader),
             unknown => Err(LoaderMacroError::UnknownLoader(unknown.to_string())),
         }
     }
-
     fn required_args(&self) -> &'static [&'static str] {
         match self {
             Self::FileOnceLoader | Self::FileUpdatingLoader => &["path"],
-            Self::HttpOnceLoader => &["url"],
         }
     }
 
     fn supported_args(&self) -> &'static [&'static str] {
         match self {
             Self::FileOnceLoader | Self::FileUpdatingLoader => &["path"],
-            Self::HttpOnceLoader => &["url"],
-        }
-    }
-}
-
-fn validate_config(
-    config: &LoaderConfig,
-    loader_type: &BuiltinLoaderType,
-) -> Result<(), LoaderMacroError> {
-    let required = loader_type.required_args();
-    let supported = loader_type.supported_args();
-    let check_arg = |name: &str, value: &Option<String>| {
-        if value.is_none() && required.contains(&name) {
-            Err(LoaderMacroError::MissingArgument(
-                name.to_string(),
-                loader_type.to_string(),
-            ))
-        } else if value.is_some() && !supported.contains(&name) {
-            Err(LoaderMacroError::UnsupportedArgument(
-                name.to_string(),
-                loader_type.to_string(),
-            ))
-        } else {
-            Ok(())
-        }
-    };
-    check_arg("path", &config.path)?;
-    check_arg("url", &config.url)?;
-    check_arg("interval", &config.interval.map(|v| v.to_string()))?;
-
-    Ok(())
-}
-
-fn generate_builder(
-    loader_type: &BuiltinLoaderType,
-    config: &LoaderConfig,
-    vis: &syn::Visibility,
-) -> proc_macro2::TokenStream {
-    match loader_type {
-        BuiltinLoaderType::FileOnceLoader => {
-            let path = config.path.as_ref().unwrap().to_string();
-            quote! {
-                #vis fn build() -> Self {
-                    Self { inner: (seedframe::loader::builtins::file_loaders::file_once_loader::FileOnceLoaderBuilder::new(vec![#path.to_string()]).unwrap().build().unwrap()) }
-                }
-            }
-        }
-        BuiltinLoaderType::FileUpdatingLoader => {
-            let path = config.path.as_ref().unwrap().to_string();
-            quote! {
-                #vis fn build() -> Self {
-                    Self { inner: (seedframe::loader::builtins::file_loaders::file_updating_loader::FileUpdatingLoaderBuilder::new(vec![#path.to_string()]).unwrap().build().unwrap()) }
-                }
-            }
-        }
-        BuiltinLoaderType::HttpOnceLoader => {
-            quote! {}
         }
     }
 }
@@ -153,12 +106,8 @@ pub(crate) fn loader_impl(
         }
     };
 
-    let loader_type = BuiltinLoaderType::from_str(&config.kind)?;
-    validate_config(&config, &loader_type)?;
-
+    validate_config(&config)?;
     let (struct_ident, struct_vis) = (&input.ident, &input.vis);
-    let builder_impl = generate_builder(&loader_type, &config, struct_vis);
-    let kind: syn::Type = syn::parse_str(&loader_type.to_string()).expect("Failed to parse type");
 
     let static_loader_instance_ident =
         format_ident!("__{}_INSTANCE", struct_ident.to_string().to_uppercase(),);
@@ -167,6 +116,13 @@ pub(crate) fn loader_impl(
           = ::std::sync::LazyLock::new(||{
               ::std::sync::Arc::new(#struct_ident::build())
         });
+    };
+
+    let loader_type = get_type(&config)?;
+    let builder_impl = generate_builder(&config, &loader_type, struct_vis);
+
+    let kind = match loader_type {
+        LoaderType::BuiltIn(t) | LoaderType::External(t) => t,
     };
 
     Ok(quote! {
@@ -187,4 +143,94 @@ pub(crate) fn loader_impl(
 
         #static_loader_instance
     })
+}
+
+enum LoaderType {
+    BuiltIn(syn::Type),
+    External(syn::Type),
+}
+
+fn validate_config(config: &LoaderConfig) -> Result<(), LoaderMacroError> {
+    if config.kind.is_some() && config.external.is_some() {
+        Err(LoaderMacroError::ParseError(darling::Error::custom(
+            "Only one of the attributes `kind` or `external` is supported!",
+        )))?;
+    }
+    if config.kind.is_none() && config.external.is_none() {
+        Err(LoaderMacroError::ParseError(darling::Error::custom(
+            "Macro expects one of `kind` or `external` attributes to be specified!",
+        )))?;
+    }
+
+    if let Some(kind) = &config.kind {
+        let loader_type = BuiltinLoaderType::from_str(kind)?;
+        let required = loader_type.required_args();
+        let supported = loader_type.supported_args();
+
+        let check_arg = |name: &str, value: &Option<String>| {
+            if value.is_none() && required.contains(&name) {
+                Err(LoaderMacroError::MissingArgument(
+                    name.to_string(),
+                    loader_type.to_string(),
+                ))
+            } else if value.is_some() && !supported.contains(&name) {
+                Err(LoaderMacroError::UnsupportedArgument(
+                    name.to_string(),
+                    loader_type.to_string(),
+                ))
+            } else {
+                Ok(())
+            }
+        };
+        check_arg("path", &config.path)?;
+    } else if config.path.is_some() {
+        Err(LoaderMacroError::UnsupportedArgument(
+            "path".to_string(),
+            "external".to_string(),
+        ))?;
+    };
+    Ok(())
+}
+
+fn get_type(config: &LoaderConfig) -> Result<LoaderType, LoaderMacroError> {
+    if let Some(kind) = &config.kind {
+        Ok(LoaderType::BuiltIn(syn::Type::from_string(
+            &BuiltinLoaderType::from_str(kind)?.to_string(),
+        )?))
+    } else {
+        Ok(LoaderType::External(config.external.clone().unwrap()))
+    }
+}
+
+fn generate_builder(
+    config: &LoaderConfig,
+    loader_type: &LoaderType,
+    vis: &syn::Visibility,
+) -> proc_macro2::TokenStream {
+    match loader_type {
+        LoaderType::BuiltIn(t) => {
+            let path = config.path.as_ref().unwrap().to_string();
+            quote! {
+                #vis fn build() -> Self {
+                    Self { inner: (#t::new(vec![#path.to_string()]).unwrap().build().unwrap()) }
+                }
+            }
+        }
+        LoaderType::External(t) => {
+            if let Some(json_str) = &config.config {
+                let json_str = serde_json::to_string(&json_str.0).unwrap();
+                quote! {
+                    #vis fn build() -> Self {
+                        Self { inner: (#t::new(Some(#json_str)).unwrap()) }
+                    }
+                }
+            } else {
+                quote! {
+                    #vis fn build() -> Self {
+                        Self { inner: (#t::new(None).unwrap()) }
+                    }
+                }
+            }
+        }
+    }
 }

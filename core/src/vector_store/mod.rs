@@ -1,16 +1,14 @@
-#[cfg(feature = "pinecone")]
-use ::pinecone_sdk::utils::errors::PineconeError;
 use async_trait::async_trait;
 use thiserror::Error;
 
 use super::embeddings::embedding::Embedding;
 
 pub mod in_memory_vec_store;
-#[cfg(feature = "pinecone")]
-pub mod pinecone;
 
+#[allow(clippy::module_name_repetitions)]
 pub use in_memory_vec_store::InMemoryVectorStore;
 
+#[allow(clippy::module_name_repetitions)]
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum VectorStoreError {
     #[error("Failed to create store: {0}")]
@@ -19,16 +17,8 @@ pub enum VectorStoreError {
     FailedUpsert(String),
     #[error("Embedding not found")]
     EmbeddingNotFound,
-    #[cfg(feature = "pinecone")]
-    #[error("Pinecone error: {0}")]
-    Pinecone(String),
-}
-
-#[cfg(feature = "pinecone")]
-impl From<PineconeError> for VectorStoreError {
-    fn from(value: PineconeError) -> Self {
-        Self::Pinecone(value.to_string())
-    }
+    #[error("Provider error: {0}")]
+    Provider(String),
 }
 
 #[async_trait]

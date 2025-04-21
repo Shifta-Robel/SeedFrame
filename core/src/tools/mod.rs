@@ -14,8 +14,12 @@ pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn args(&self) -> &[ToolArg];
-    async fn call(&self, args: &str, states: &DashMap<TypeId, Box<dyn Any + Send + Sync>>) -> Result<Value, ToolError>;
-        
+    async fn call(
+        &self,
+        args: &str,
+        states: &DashMap<TypeId, Box<dyn Any + Send + Sync>>,
+    ) -> Result<Value, ToolError>;
+
     fn output_schema(&self) -> Option<Value> {
         None
     }
@@ -41,7 +45,7 @@ pub enum ToolError {
     #[error(transparent)]
     JsonError(#[from] serde_json::Error),
     #[error(transparent)]
-    StateError(#[from] StateError)
+    StateError(#[from] StateError),
 }
 
 pub enum ExecutionStrategy {
@@ -65,17 +69,30 @@ pub enum ToolSetError {
 
 #[allow(unused)]
 impl ToolSet {
-    pub fn find_tool(&self, name: &str) -> Result<&Box<dyn Tool>, ToolSetError> {
+    /// Find a tool from the toolset
+    ///
+    /// # Arguments
+    /// * `name`: name of the tool to find
+    ///
+    /// # Errors
+    /// - If the tool isnt found in the toolset
+    pub fn find_tool(&self, name: &str) -> Result<&dyn Tool, ToolSetError> {
         self.0
             .iter()
             .find(|t| t.name() == name)
+            .map(AsRef::as_ref)
             .ok_or(ToolSetError::ToolNotFound)
     }
 
+    /// Adds a tool to the toolset
     pub fn add_tool(&mut self, tool: Box<dyn Tool>) {
         self.0.push(tool);
     }
 
+    /// Removes a tool from the toolset
+    ///
+    /// # Errors
+    /// returns a `ToolSetError::ToolNotFound` if the tool isnt found
     pub fn remove_tool(&mut self, name: &str) -> Result<(), ToolSetError> {
         let pos = self
             .0
@@ -86,10 +103,22 @@ impl ToolSet {
         Ok(())
     }
 
-    #[must_use] pub fn list_tools(&self) -> Vec<Box<dyn Tool>> {
+    /// Get the tools from a toolset
+    #[must_use]
+    pub fn list_tools(&self) -> Vec<Box<dyn Tool>> {
         todo!()
     }
 
+    /// Executes a tool with the given arguments and state context.
+    ///
+    /// # Arguments
+    /// - `id`: identifier for this tool call
+    /// - `name`: The registered name of the tool to execute
+    /// - `args`: JSON-formatted string containing tool arguments
+    /// - `states`: Shared application state available to all tools (thread-safe)
+    ///
+    /// # Errors
+    /// - returns `ToolSetError`: If execution fails
     pub async fn call(
         &self,
         id: &str,
@@ -115,7 +144,20 @@ pub struct ToolArg {
 }
 
 impl ToolArg {
-    #[must_use] pub fn new<T: JsonSchema + Serialize>(name: &str, description: &str) -> Self {
+    /// Creates a new `ToolArg`
+    ///
+    /// # Arguments
+    /// - `name`: Argument name
+    /// - `description`: Human-readable description
+    /// - `T`: Type implementing `JsonSchema` and `Serialize` for schema generation
+    ///
+    /// # Returns
+    /// `ToolArg` with processed schema (removes metadata, adds description)
+    ///
+    /// # Panics
+    /// If a `serde_json::Value` cant be created from `T`
+    #[must_use]
+    pub fn new<T: JsonSchema + Serialize>(name: &str, description: &str) -> Self {
         let settings = SchemaSettings::default().with(|s| {
             s.inline_subschemas = true;
         });
@@ -185,7 +227,8 @@ pub struct ToolResponse {
     pub content: serde_json::Value,
 }
 
-#[must_use] pub fn build_parameters_schema(args: &[ToolArg]) -> Value {
+#[must_use]
+pub fn build_parameters_schema(args: &[ToolArg]) -> Value {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
 

@@ -1,14 +1,12 @@
 pub mod embedding;
 pub mod model;
-use crate::{
-    loader::LoaderInstance,
-    vector_store::{VectorStore, VectorStoreError},
-};
+use crate::{loader::LoaderInstance, vector_store::VectorStore};
 use embedding::Embedding;
 use model::EmbeddingModel;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::Mutex;
+use tracing::{error, info};
 
 #[derive(Debug, Error)]
 pub enum EmbedderError {
@@ -33,60 +31,65 @@ pub struct Embedder {
 
 impl Embedder {
     /// Initializes the `Embedder` with the provided loaders, vector store, and embedding model.
-    ///
-    /// # Returns
-    /// * `Ok(Self)` - A new `Embedder` instance.
-    /// * `Err(EmbedderError)` - An error if initialization fails.
     pub async fn init(
         loaders: Vec<LoaderInstance>,
         vector_store: Arc<Mutex<Box<dyn VectorStore>>>,
         embedding_model: Arc<Box<dyn EmbeddingModel>>,
-    ) -> Result<Self, EmbedderError> {
+    ) -> Self {
         let embedder = Self {
             loaders,
             vector_store,
             embedding_model,
         };
-        embedder.init_loaders_listeners().await?;
-        Ok(embedder)
+        embedder.init_loaders_listeners().await;
+        embedder
     }
 
     /// Initializes listeners for the loaders.
     ///
     /// This method spawns asynchronous tasks to listen for new documents from the loaders,
     /// generate embeddings, and store them in the vector store.
-    ///
-    /// # Returns
-    /// * `Ok(())` - If the listeners are successfully initialized.
-    /// * `Err(EmbedderError)` - If an error occurs during initialization.
-    async fn init_loaders_listeners(&self) -> Result<(), EmbedderError> {
+    async fn init_loaders_listeners(&self) {
         for loader in &self.loaders {
+            info!("Initializing loader");
             let embedding_model = Arc::clone(&self.embedding_model);
             let vector_store = Arc::clone(&self.vector_store);
             let loader = Arc::clone(loader);
 
             let mut listener = loader.subscribe().await;
             tokio::spawn(async move {
+                info!("Spawned a thread for loader");
                 while let Ok(doc) = listener.recv().await {
-                    let embedded_data = if !&doc.data.is_empty() {
-                        embedding_model.embed(&doc.data).await.unwrap()
-                    } else {
+                    info!("Recieved document :{}", &doc.id);
+                    let embedded_data = if doc.data.is_empty() {
                         vec![]
+                    } else {
+                        embedding_model.embed(&doc.data).await.unwrap()
                     };
-                    vector_store
+                    match vector_store
                         .lock()
                         .await
                         .store(Embedding {
-                            id: doc.id,
+                            id: doc.id.clone(),
                             embedded_data,
                             raw_data: doc.data,
                         })
                         .await
-                        .unwrap();
+                    {
+                        Ok(()) => {
+                            info!(
+                                "Added embedding for document {} to the vector store",
+                                &doc.id
+                            );
+                        }
+                        Err(e) => {
+                            error!(error = ?e, "Failed to store embedding for document {}", &doc.id);
+                            panic!("{e}");
+                        }
+                    };
                 }
             });
         }
-        Ok(())
     }
 
     /// Queries the vector store for documents similar to the provided query.
@@ -96,14 +99,21 @@ impl Embedder {
     /// * `top_n` - The number of top results to return.
     ///
     /// # Returns
-    /// * `Ok(Vec<Embedding>)` - A list of the top `n` embeddings matching the query.
-    /// * `Err(VectorStoreError)` - An error if the query fails.
+    /// * - A list of the top `n` embeddings matching the query.
+    ///
+    /// # Errors
+    ///  returns `Err(seedframe::error::Error)` - If embedding the query or fetching from vec store fails.
     pub async fn query(
         &self,
         query: &str,
         top_n: usize,
-    ) -> Result<Vec<Embedding>, VectorStoreError> {
-        let query = self.embedding_model.embed(query).await.unwrap();
-        self.vector_store.lock().await.top_n(&query, top_n).await
+    ) -> Result<Vec<Embedding>, crate::error::Error> {
+        let query = self.embedding_model.embed(query).await?;
+        self.vector_store
+            .lock()
+            .await
+            .top_n(&query, top_n)
+            .await
+            .map_err(Into::into)
     }
 }

@@ -16,7 +16,6 @@ walkdir = "2.5.0"
 seedframe_macros =  { path = "../proc_macros"}
 notify = "8.0.0"
 tracing = "0.1.41"
-pinecone-sdk = {version ="0.1.2", optional = true}
 schemars = "0.8.22"
 thiserror = "2.0.12"
 dashmap = "6.1.0"
@@ -26,10 +25,4 @@ tempfile = "3.16.0"
 tracing-subscriber = "0.3.19"
 
 [features]
-pinecone = ["pinecone-sdk"]
 pdf = ["pdf-extract"]
-
-[[example]]
-name = "agent_with_pinecone"
-path = "examples/agent_with_pinecone.rs"
-required-features = ["pinecone"]

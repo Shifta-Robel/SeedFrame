@@ -7,6 +7,7 @@ use tracing::{debug, error, info, instrument};
 use super::{utils::load_initial, FileLoaderError};
 use crate::{document::Document, loader::Loader};
 
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug)]
 /// A builder for constructing a `FileOnceLoader`.
 ///
@@ -78,6 +79,16 @@ pub struct FileOnceLoader {
     tx: broadcast::Sender<Document>,
     documents: Vec<Document>,
     sent: AtomicBool,
+}
+
+impl FileOnceLoader {
+    /// Here for making use by the `proc_macro` lib more convinient, just calls
+    /// `FileOnceLoaderBuilder::new()`
+    #[allow(clippy::new_ret_no_self)]
+    #[allow(clippy::missing_errors_doc)]
+    pub fn new(glob_patterns: Vec<String>) -> Result<FileOnceLoaderBuilder, FileLoaderError> {
+        FileOnceLoaderBuilder::new(glob_patterns)
+    }
 }
 
 #[async_trait]

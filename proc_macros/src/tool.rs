@@ -20,6 +20,7 @@ pub(crate) enum ToolMacroError {
     ParseError(#[from] darling::Error),
 }
 
+#[allow(clippy::too_many_lines)]
 pub(crate) fn tool_impl(
     args: TokenStream,
     input: TokenStream,
@@ -87,7 +88,7 @@ pub(crate) fn tool_impl(
         quote! { get_state::<#ty>(states)? }
     });
 
-    let (args, param_struct, params) = get_tool_arg_token_streams(arg_name_type_desc.as_slice())?;
+    let (args, param_struct, params) = get_tool_arg_token_streams(arg_name_type_desc.as_slice());
 
     let fn_call = if input.sig.asyncness.is_some() {
         quote! { #fn_ident(#params, #(#states),*).await }
@@ -153,7 +154,7 @@ pub(crate) fn tool_impl(
 
 fn get_tool_arg_token_streams(
     args: &[(String, Type, String)],
-) -> Result<(TokenStream, TokenStream, TokenStream), ToolMacroError> {
+) -> (TokenStream, TokenStream, TokenStream) {
     let (a_name, a_type, a_desc) = args.iter().fold(
         (Vec::new(), Vec::new(), Vec::new()),
         |(mut t1, mut t2, mut t3), (a, b, c)| {
@@ -177,13 +178,13 @@ fn get_tool_arg_token_streams(
     };
     let params = quote! {#(params.#a_name),*};
 
-    Ok((tool_args, params_struct, params))
+    (tool_args, params_struct, params)
 }
 
 fn validate_fn_type_bounds(input: &syn::ItemFn) -> Result<(), darling::Error> {
     for arg in &input.sig.inputs {
         if let syn::FnArg::Typed(pat_type) = arg {
-            if parse_state_parameter(pat_type)?.is_some() {
+            if parse_state_parameter(pat_type).is_some() {
                 continue;
             }
             if let syn::Pat::Ident(_) = &*pat_type.pat {
@@ -218,7 +219,7 @@ fn collect_fn_arg_names(
 
     for arg in &input.sig.inputs {
         if let syn::FnArg::Typed(pat_type) = arg {
-            if let Some((binding_name, inner_ty)) = parse_state_parameter(pat_type)? {
+            if let Some((binding_name, inner_ty)) = parse_state_parameter(pat_type) {
                 state_args.push(StateArg {
                     binding_name,
                     ty: inner_ty,
@@ -244,27 +245,25 @@ fn collect_fn_arg_names(
     Ok((regular_args, state_args))
 }
 
-fn parse_state_parameter(
-    pat_type: &syn::PatType,
-) -> Result<Option<(String, syn::Type)>, darling::Error> {
+fn parse_state_parameter(pat_type: &syn::PatType) -> Option<(String, syn::Type)> {
     let ty = match &*pat_type.ty {
         syn::Type::Path(type_path) if type_path.path.segments.len() == 1 => {
             let segment = &type_path.path.segments[0];
             if segment.ident != "State" {
-                return Ok(None);
+                return None;
             }
             match &segment.arguments {
                 syn::PathArguments::AngleBracketed(args) if args.args.len() == 1 => {
                     if let syn::GenericArgument::Type(inner_ty) = &args.args[0] {
                         inner_ty
                     } else {
-                        return Ok(None);
+                        return None;
                     }
                 }
-                _ => return Ok(None),
+                _ => return None,
             }
         }
-        _ => return Ok(None),
+        _ => return None,
     };
 
     let binding_name = match &*pat_type.pat {
@@ -273,13 +272,13 @@ fn parse_state_parameter(
             if let syn::Pat::Ident(pat_ident) = &pat_tuple.elems[0] {
                 pat_ident.ident.to_string()
             } else {
-                return Ok(None);
+                return None;
             }
         }
-        _ => return Ok(None),
+        _ => return None,
     };
 
-    Ok(Some((binding_name, ty.clone())))
+    Some((binding_name, ty.clone()))
 }
 
 pub fn parse_doc_comment(doc: &str) -> (Option<String>, Vec<(String, String)>) {
@@ -316,8 +315,8 @@ pub fn parse_doc_comment(doc: &str) -> (Option<String>, Vec<(String, String)>) {
         .find(|(h, _)| h.as_deref() == Some("Arguments"))
     {
         for line in args_lines {
-            if line.starts_with('*') {
-                let content = line[1..].trim();
+            if let Some(stripped) = line.strip_prefix('*') {
+                let content = stripped.trim();
                 if let Some((name_part, desc)) = content.split_once(':') {
                     let name = name_part.trim().trim_matches('`').to_string();
                     let description = desc.trim().to_string();

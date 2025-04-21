@@ -6,7 +6,7 @@ use tokio::sync::broadcast::Receiver;
 
 /// Module for built-in loader implementations.
 ///
-/// Provides pre-defined loader implementations that can be used out
+/// Provides pre-defined loader implementations that can be used
 /// for common resource loading.
 pub mod builtins;
 

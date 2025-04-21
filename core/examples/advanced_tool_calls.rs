@@ -1,11 +1,13 @@
-use schemars::JsonSchema;
 use seedframe::prelude::*;
+use seedframe::providers::completions::OpenAI;
+
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
 #[client(
-    provider = "openai",
-    model = "gpt-4o-mini",
+    provider = "OpenAI",
+    config = "{\"model\": \"gpt-4o-mini\"}",
     tools("schedule_meeting", "convert_temperature")
 )]
 struct AdvancedClient;

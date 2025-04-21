@@ -38,7 +38,10 @@ You could also extract structured output from the llms, the target types need to
 Like the tools the description for the type and for it's fields will get extracted from the docs and get passed to the llm, but its not an error to leave them undocumented.
 
 ```rust
-#[client(provider = "openai", model = "gpt-4o-mini", tools("analyze"))]
+use seedframe::prelude::*;
+use seedframe::providers::completions::OpenAI;
+
+#[client(provider = "OpenAI", tools("analyze"))]
 struct ToolClient;
 
 /// Perform sentiment analysis on text
@@ -79,6 +82,7 @@ async fn main() -> Result<()> {
 ### Building a simple RAG
 ```rust
 use seedframe::prelude::*;
+use seedframe::providers::{completions::OpenAI, embeddings::OpenAIEmbedding};
 
 // Declare file loader that doesnt check for updates, loading files that match the glob pattern
 #[loader(kind = "FileOnceLoader", path = "/tmp/data/**/*.txt")]
@@ -87,7 +91,7 @@ pub struct MyLoader;
 #[vector_store(kind = "InMemoryVectorStore")]
 pub struct MyVectorStore;
 
-#[embedder(provider = "openai", model = "text-embedding-3-small")]
+#[embedder(provider = "OpenAIEmbedding")]
 struct MyEmbedder {
     #[vector_store]
     my_vector_store: MyVectorStore,
@@ -95,7 +99,7 @@ struct MyEmbedder {
     my_loader: MyLoader,
 }
 
-#[client(provider = "openai", model = "gpt-4o-mini")]
+#[client(provider = "OpenAI", config = r#"{"model": "gpt-4o-mini"}"#)]
 struct MyClient {
     #[embedder]
     my_embedder: MyEmbedder,

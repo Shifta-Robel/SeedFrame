@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use serde::de::Error;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, instrument};
@@ -11,18 +12,22 @@ pub struct InMemoryVectorStore {
     embeddings: RwLock<HashMap<String, Embedding>>,
 }
 
-impl Default for InMemoryVectorStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl InMemoryVectorStore {
-    pub fn new() -> Self {
-        info!("Creating a new InMemoryVectorStore");
-        Self {
-            embeddings: RwLock::new(HashMap::new()),
+    /// Creates a new instance of `InMemoryVectorStore`
+    ///
+    /// # Errors
+    /// Errors if `json_config` isn't `None`
+    #[allow(clippy::unused_async)]
+    pub async fn new(json_config: Option<&str>) -> Result<Self, serde_json::Error> {
+        if json_config.is_some() {
+            Err(serde_json::Error::custom(
+                "`InMemoryVectorStore` doesnt expect a config json!",
+            ))?;
         }
+        info!("Creating a new InMemoryVectorStore");
+        Ok(Self {
+            embeddings: RwLock::new(HashMap::new()),
+        })
     }
 }
 
@@ -35,7 +40,11 @@ impl VectorStore for InMemoryVectorStore {
             .get(&id)
             .ok_or(VectorStoreError::EmbeddingNotFound)
             .cloned();
-        if res.is_ok() { debug!("Found embedding for document") } else { error!("Failed to find embedding for document") };
+        if res.is_ok() {
+            debug!("Found embedding for document");
+        } else {
+            error!("Failed to find embedding for document");
+        };
         res
     }
 

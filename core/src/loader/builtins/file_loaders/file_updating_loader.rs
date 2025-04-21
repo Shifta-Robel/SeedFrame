@@ -25,6 +25,7 @@ use super::{utils::load_initial, FileLoaderError};
 const DEFAULT_CHANNEL_CAPACITY: usize = 20;
 const DEBOUNCE_DURATION_MILLIS: u64 = 500;
 
+#[allow(clippy::module_name_repetitions)]
 #[derive(Debug)]
 /// A builder for constructing a `FileUpdatingLoader`.
 ///
@@ -70,8 +71,13 @@ impl FileUpdatingLoaderBuilder {
     /// # Returns
     /// * `FileUpdatingLoader` - A new `FileUpdatingLoader` instance.
     pub fn build(self) -> FileUpdatingLoader {
-        let files = resolve_input_to_files(self.glob_patterns.iter().map(std::string::String::as_str).collect())
-            .unwrap();
+        let files = resolve_input_to_files(
+            self.glob_patterns
+                .iter()
+                .map(std::string::String::as_str)
+                .collect(),
+        )
+        .unwrap();
         let capacity = if files.is_empty() {
             DEFAULT_CHANNEL_CAPACITY
         } else {

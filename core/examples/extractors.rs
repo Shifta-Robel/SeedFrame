@@ -1,8 +1,9 @@
-use seedframe::prelude::*;
-use serde::Deserialize;
 use schemars::JsonSchema;
+use seedframe::prelude::*;
+use seedframe::providers::completions::OpenAI;
+use serde::Deserialize;
 
-#[client(provider = "openai",model = "gpt-4o-mini")]
+#[client(provider = "OpenAI")]
 struct ExtractorClient;
 
 #[allow(unused)]
@@ -33,12 +34,10 @@ struct MeetingDetails {
 
 #[tokio::main]
 async fn main() -> Result<(), seedframe::error::Error> {
-    let mut client = ExtractorClient::build("You are a helpful assistant".to_string()).await;
+    let mut client = ExtractorClient::build("You are a helpful assistant").await;
 
     let person_text = "My colleague John Doe is 28 years old. He works as a software engineer and enjoys hiking, reading, and playing chess, his email is johhnydoep@mail.com";
-    let person = client.prompt(person_text)
-        .extract::<Person>()
-        .await?;
+    let person = client.prompt(person_text).extract::<Person>().await?;
     println!("Extracted Person:\n{person:#?}\n");
 
     let meeting_text = "We have a team meeting scheduled for 2026-2-15 at 11:30. \
@@ -46,7 +45,8 @@ async fn main() -> Result<(), seedframe::error::Error> {
                        John Doe (35, Product Manager, hobbies: golf), \
                        Alice Smith (29, hobbies: painting, yoga), \
                        and Bob Johnson (42, CTO).";
-    let meeting = client.prompt(meeting_text)
+    let meeting = client
+        .prompt(meeting_text)
         .extract::<MeetingDetails>()
         .await?;
     println!("Extracted Meeting:\n{meeting:#?}\n");

@@ -4,4 +4,8 @@ resolver="2"
 members = [
   "core/",
   "proc_macros/",
+  "integrations/completion_providers/seedframe_anthropic/",
+  "integrations/embedding_providers/seedframe_voyageai/",
+  "integrations/seedframe_webscraper/",
+  "integrations/vector_stores/seedframe_pinecone/"
 ]

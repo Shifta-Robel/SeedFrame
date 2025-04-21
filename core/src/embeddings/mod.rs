@@ -9,6 +9,7 @@ use model::EmbeddingModel;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::Mutex;
+use tracing::{error, info};
 
 #[derive(Debug, Error)]
 pub enum EmbedderError {
@@ -61,28 +62,36 @@ impl Embedder {
     /// * `Err(EmbedderError)` - If an error occurs during initialization.
     async fn init_loaders_listeners(&self) -> Result<(), EmbedderError> {
         for loader in &self.loaders {
+            info!("Initializing loader");
             let embedding_model = Arc::clone(&self.embedding_model);
             let vector_store = Arc::clone(&self.vector_store);
             let loader = Arc::clone(loader);
 
             let mut listener = loader.subscribe().await;
             tokio::spawn(async move {
+                info!("Spawned a thread for loader");
                 while let Ok(doc) = listener.recv().await {
+                    info!("Recieved document :{}", &doc.id);
                     let embedded_data = if !&doc.data.is_empty() {
                         embedding_model.embed(&doc.data).await.unwrap()
                     } else {
                         vec![]
                     };
-                    vector_store
-                        .lock()
-                        .await
+                    match vector_store.lock().await
                         .store(Embedding {
-                            id: doc.id,
+                            id: doc.id.clone(),
                             embedded_data,
                             raw_data: doc.data,
-                        })
-                        .await
-                        .unwrap();
+                        }).await
+                    {
+                        Ok(()) => {
+                            info!("Added embedding for document {} to the vector store", &doc.id);
+                        },
+                        Err(e) => {
+                            error!(error = ?e, "Failed to store embedding for document {}", &doc.id);
+                            panic!("{e}");
+                        }
+                    };
                 }
             });
         }

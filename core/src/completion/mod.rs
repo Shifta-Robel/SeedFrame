@@ -9,7 +9,7 @@ use std::{
 };
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tracing::info;
+use tracing::{error, info, instrument};
 
 use crate::{
     embeddings::Embedder,
@@ -407,6 +407,7 @@ impl<M: CompletionModel + Send> Client<M> {
         messages.iter().for_each(|m| self.history.push(m.clone()));
     }
 
+    #[instrument(skip(self,state), fields())]
     /// Registers new state with the client
     ///
     /// # Errors
@@ -414,14 +415,19 @@ impl<M: CompletionModel + Send> Client<M> {
     pub fn with_state<T: Send + Sync + 'static>(self, state: T) -> Result<Self, CompletionError> {
         let type_id = state.type_id();
         if self.states.contains_key(&type_id) {
+            error!(
+                state_type = std::any::type_name::<T>(),
+                "Failed to add state to client because state of a similar type already exists");
             return Err(CompletionError::StateError(StateError::AlreadyExists(
                 format!("{:?}", std::any::type_name::<T>()),
             )));
         }
         self.states.insert(type_id, Box::new(Arc::new(state)));
+        info!(state_type = std::any::type_name::<T>(), "Successfully added state new state to client!");
         Ok(self)
     }
 
+    #[instrument(skip(self))]
     /// Retrieves previously registered state
     ///
     /// # Errors
@@ -430,7 +436,9 @@ impl<M: CompletionModel + Send> Client<M> {
         let boxed = self
             .states
             .get(&TypeId::of::<T>())
-            .ok_or(StateError::NotFound)?;
+            .ok_or({
+                error!(state_type = std::any::type_name::<T>(), "Failed to find requested state on client");
+                StateError::NotFound})?;
 
         let arc = boxed.downcast_ref::<Arc<T>>().ok_or(StateError::NotFound)?;
 
@@ -442,6 +450,7 @@ impl<M: CompletionModel + Send> Client<M> {
         PromptBuilder::new(self, prompt)
     }
 
+    #[instrument(skip(self, calls), fields(fetch_toolcall_from_history = calls.is_some()))]
     /// Executes requested tool calls from the model
     ///
     /// If no calls are provided, attempts to use calls from the last assistant message.
@@ -460,7 +469,9 @@ impl<M: CompletionModel + Send> Client<M> {
             let last = self
                 .history
                 .last()
-                .ok_or(ToolSetError::EmptyMessageHistory)?;
+                .ok_or({
+                    error!("Attempting to extract tool to call from an empty message history!");
+                    ToolSetError::EmptyMessageHistory})?;
             if let Message::Assistant {
                 content: _,
                 tool_calls: Some(tcs),
@@ -468,6 +479,7 @@ impl<M: CompletionModel + Send> Client<M> {
             {
                 tcs
             } else {
+                error!("Last message in message history doesnt contain tools to call");
                 Err(ToolSetError::LastMessageNotAToolCall)?
             }
         });
@@ -476,21 +488,29 @@ impl<M: CompletionModel + Send> Client<M> {
         match self.tools.1 {
             ExecutionStrategy::FailEarly => {
                 for call in calls {
-                    values.push(
-                        self.tools
-                            .call(&call.id, &call.name, &call.arguments, &self.states)
-                            .await?,
-                    );
+                    info!(tool_name = call.name,"Calling tool with a `FailEarly` execution strategy!");
+                    let call_result = self.tools.call(&call.id, &call.name, &call.arguments, &self.states)
+                            .await;
+                    if let Err(ref e) = call_result{
+                        error!(error = ?e, tool_name = call.name, "Tool call failed");
+                    }
+                    values.push(call_result?);
                 }
             }
             ExecutionStrategy::BestEffort => {
                 for call in calls {
+                    info!(tool_name = call.name,"Calling tool with a `BestEffort` execution strategy!");
                     let tr = self
                         .tools
                         .call(&call.id, &call.name, &call.arguments, &self.states)
                         .await;
-                    if let Ok(v) = tr {
-                        values.push(v);
+                    match tr {
+                        Ok(v) => {
+                            values.push(v);
+                        },
+                        Err(e) => {
+                            error!(error = ?e, tool_name = call.name, "Tool call failed");
+                        }
                     }
                 }
             }

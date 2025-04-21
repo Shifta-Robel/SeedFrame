@@ -81,6 +81,7 @@ pub struct FileOnceLoader {
 }
 
 impl FileOnceLoader {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(glob_patterns: Vec<String>) -> Result<FileOnceLoaderBuilder, FileLoaderError> {
         FileOnceLoaderBuilder::new(glob_patterns)
     }

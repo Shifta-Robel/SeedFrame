@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tracing::{debug, error, info, instrument};
 
 const DEFAULT_API_KEY_VAR_NAME: &str = "OPENAI_EMBEDDING_API_KEY";
 const DEFAULT_URL: &str = "https://api.openai.com/v1/embeddings";
@@ -24,10 +25,18 @@ pub struct OpenAIEmbedding {
 }
 
 impl OpenAIEmbedding {
+    #[instrument]
     #[must_use]
     pub fn new(json_config: Option<&str>) -> Self {
         let (api_key_var, api_url, model) = if let Some(json) = json_config {
-            let config: ModelConfig = serde_json::from_str(json).unwrap();
+            let config = match serde_json::from_str::<ModelConfig>(json) {
+                Ok(config) => config,
+                Err(e) => {
+                    let e = format!("Failed to deserialize json config: {e}");
+                    error!(e);
+                    panic!("{e}");
+                }
+            };
             (
                 config
                     .api_key
@@ -42,8 +51,14 @@ impl OpenAIEmbedding {
                 DEFAULT_MODEL.to_string(),
             )
         };
-        let api_key = std::env::var(&api_key_var)
-            .unwrap_or_else(|_| panic!("Failed to fetch env var `{api_key_var}` !"));
+        let api_key = match std::env::var(&api_key_var){
+            Ok(key) => key,
+            Err(e) => {
+                let e = format!("Failed to fetch env var `{api_key_var}`!, {e}");
+                error!(e);
+                panic!("{e}");
+            }
+        };
         Self {
             api_key,
             api_url,
@@ -65,11 +80,21 @@ struct OpenAIEmbeddingData {
 
 #[async_trait]
 impl EmbeddingModel for OpenAIEmbedding {
+    #[instrument(
+        skip(self, data),
+        fields(
+            model = self.model,
+            api_url = self.api_url,
+            input_length = data.len()
+        )
+    )]
     async fn embed(&self, data: &str) -> Result<Vec<f64>, EmbedderError> {
+        info!("Preparing embedding request");
         let request_body = json!({
                 "input": data,
                 "model": self.model,
         });
+        debug!(request_body.input_length = data.len(), "Sending embedding request");
         let response = self
             .client
             .post(&self.api_url)
@@ -78,24 +103,43 @@ impl EmbeddingModel for OpenAIEmbedding {
             .json(&request_body)
             .send()
             .await
-            .map_err(|e| EmbedderError::RequestError(e.to_string()))?;
+            .map_err(|e| {
+                error!(error = ?e, "Embedding request failed");
+                EmbedderError::RequestError(e.to_string())
+            })?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        debug!(%status, "Received embedding response");
+
+        if status.is_success() {
             let response = response
                 .json::<OpenAIEmbeddingResponse>()
                 .await
-                .map_err(|e| EmbedderError::ParseError(e.to_string()))?;
+                .map_err(|e| {
+                    error!(error = ?e, "Failed to parse embedding response");
+                    EmbedderError::ParseError(e.to_string())
+                })?;
 
-            Ok(response
+            let embeddings: Vec<f64> = response
                 .data
                 .into_iter()
                 .flat_map(|d| d.embedding)
-                .collect())
+                .collect();
+            info!(
+                embedding_length = embeddings.len(),
+                "Successfully generated embeddings"
+            );
+            Ok(embeddings)
         } else {
             let error_message = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
+            error!(
+                status = %status,
+                error = %error_message,
+                "Embedding API returned error"
+            );
 
             Err(EmbedderError::ProviderError(error_message))
         }

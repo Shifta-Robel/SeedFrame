@@ -156,7 +156,6 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn simple_openai_embed_request() {
-        let model = "text-embedding-3-small".to_string();
         let openai_embedding_model = OpenAIEmbedding::new(None);
 
         let response = openai_embedding_model.embed("test").await;

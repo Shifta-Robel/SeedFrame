@@ -387,8 +387,6 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn simple_openai_completion_request() {
-        let model = "gpt-4o-mini".to_string();
-
         let mut openai_completion_model = OpenAICompletionModel::new(None);
 
         let response = openai_completion_model
@@ -428,8 +426,6 @@ For this test to be considered successful, reply with "okay" without the quotes,
     #[ignore]
     async fn openai_toolcall_test() {
         tracing_subscriber::fmt().init();
-        let model = "gpt-4o-mini".to_string();
-
         let mut openai_completion_model = OpenAICompletionModel::new(None);
         let response = openai_completion_model
             .send(

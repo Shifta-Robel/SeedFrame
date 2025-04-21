@@ -198,6 +198,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore]
     async fn test_new_pinecone_vec_store() {
         let host = std::env::var("PINECONE_IDX_HOST").unwrap();
         let config = format!(r#"{{"index_host": "{}"}}"#, host);
@@ -214,6 +215,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_pinecone_get_by_id() {
         let host = std::env::var("PINECONE_IDX_HOST").unwrap();
         let config = format!(r#"{{"index_host": "{}"}}"#, host);

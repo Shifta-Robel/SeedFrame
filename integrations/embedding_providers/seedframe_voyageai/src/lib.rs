@@ -148,7 +148,6 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn simple_openai_embed_request() {
-        let model = "voyage-large-2".to_string();
         let openai_embedding_model = VoyageAIEmbedding::new(None);
 
         let response = openai_embedding_model.embed("test").await;

@@ -284,7 +284,6 @@ mod tests {
     #[ignore]
     async fn simple_xai_completion_request() {
         tracing_subscriber::fmt().init();
-        let model = "grok-2-latest".to_string();
 
         let mut xai_completion_model = XaiCompletionModel::new(None);
 

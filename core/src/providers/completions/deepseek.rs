@@ -287,7 +287,6 @@ mod tests {
     #[ignore]
     async fn simple_deepseek_completion_request() {
         tracing_subscriber::fmt().init();
-        let model = "deepseek".to_string();
 
         let mut deepseek_completion_model = DeepseekCompletionModel::new(None);
 

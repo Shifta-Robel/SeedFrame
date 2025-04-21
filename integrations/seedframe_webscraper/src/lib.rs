@@ -201,7 +201,7 @@ mod tests {
             url
         );
 
-        let scraper = WebScraper::new(&json).unwrap();
+        let scraper = WebScraper::new(Some(&json)).unwrap();
         let mut receiver = scraper.subscribe().await;
 
         let first = receiver.recv().await.unwrap();
@@ -227,7 +227,7 @@ mod tests {
         let url = server.await.url();
         let json = &format!("{{\"url\": \"{}\"}}", url);
 
-        let scraper = WebScraper::new(json).unwrap();
+        let scraper = WebScraper::new(Some(json)).unwrap();
         let mut receiver = scraper.subscribe().await;
 
         let mut received = Vec::new();

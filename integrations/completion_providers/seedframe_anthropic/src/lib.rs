@@ -335,6 +335,10 @@ impl CompletionModel for AnthropicCompletionModel {
 
 #[cfg(test)]
 mod test {
+    use seedframe::completion::Message;
+
+    use crate::{AnthropicMessage, ContentBlock};
+
     #[test]
     fn test_proper_message_conversion() {
         let st = "start<sf_thinking>think1</sf_sig>make</sf_thinking>middle<sf_r_thinking>think2</sf_r_thinking>end";

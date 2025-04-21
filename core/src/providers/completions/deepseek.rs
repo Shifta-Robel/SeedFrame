@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
+use tracing::{debug, error, info, instrument};
 
 const API_KEY_ENV_VAR: &str = "SEEDFRAME_DEEPSEEK_API_KEY";
 const URL: &str = "https://api.deepseek.com/chat/completions";
@@ -31,10 +32,18 @@ pub struct DeepseekCompletionModel {
 }
 
 impl DeepseekCompletionModel {
+    #[instrument]
     #[must_use]
     pub fn new(json_config: Option<&str>) -> Self {
         let (api_key_var, api_url, model) = if let Some(json) = json_config {
-            let config: ModelConfig = serde_json::from_str(json).unwrap();
+            let config = match serde_json::from_str::<ModelConfig>(json) {
+                Ok(config) => config,
+                Err(e) => {
+                    let e = format!("Failed to deserialize json config: {e}");
+                    error!(e);
+                    panic!("{e}");
+                }
+            };
             (
                 config.api_key.unwrap_or(API_KEY_ENV_VAR.to_string()),
                 config.api_url.unwrap_or(URL.to_string()),
@@ -47,8 +56,14 @@ impl DeepseekCompletionModel {
                 DEFAULT_MODEL.to_string(),
             )
         };
-        let api_key = std::env::var(api_key_var.clone())
-            .unwrap_or_else(|_| panic!("Failed to fetch env var `{api_key_var}` !"));
+        let api_key = match std::env::var(&api_key_var){
+            Ok(key) => key,
+            Err(e) => {
+                let e = format!("Failed to fetch env var `{api_key_var}`!, {e}");
+                error!(e);
+                panic!("{e}");
+            }
+        };
         Self {
             api_key,
             api_url,
@@ -115,6 +130,13 @@ impl CompletionModel for DeepseekCompletionModel {
             tools,
         )
     }
+
+    #[instrument(
+        skip(self, history, tools, temperature),
+        fields(
+            history_len = history.len(),
+            tools = tools.is_some())
+    )]
     async fn send(
         &mut self,
         message: Message,
@@ -141,12 +163,14 @@ impl CompletionModel for DeepseekCompletionModel {
             let tools_serialized: Vec<serde_json::Value> =
                 tools.0.iter().map(|t| t.default_serializer()).collect();
             if let Some(obj) = request_body.as_object_mut() {
+                info!(tool_count = tools_serialized.len(), "Including tools in request");
                 obj.insert(
                     "tools".to_string(),
                     serde_json::Value::Array(tools_serialized),
                 );
             }
         }
+        debug!(request_body = ?request_body, "Sending request to Deepseek...");
 
         let response = self
             .client
@@ -156,13 +180,22 @@ impl CompletionModel for DeepseekCompletionModel {
             .json(&request_body)
             .send()
             .await
-            .map_err(|e| CompletionError::RequestError(e.to_string()))?;
+            .map_err(|e| {
+                error!(error = ?e, "Request failed");
+                CompletionError::RequestError(e.to_string())
+            })?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        debug!(%status, "Received API response");
+
+        if status.is_success() {
             let response_json: serde_json::Value = response
                 .json()
                 .await
-                .map_err(|e| CompletionError::ParseError(e.to_string()))?;
+                .map_err(|e| {
+                    error!(error = ?e, "Failed to parse response JSON");
+                    CompletionError::ParseError(e.to_string())
+                })?;
 
             let response_message = response_json["choices"][0]["message"]["content"]
                 .as_str()
@@ -170,24 +203,30 @@ impl CompletionModel for DeepseekCompletionModel {
                     "Invalid response body".to_string(),
                 ))?
                 .to_string();
-            let tool_calls_json = response_json["choices"][0]["message"]["tool_calls"]
+
+            let tool_calls: Option<Vec<ToolCall>> = response_json["choices"][0]["message"]
+                ["tool_calls"]
                 .as_array()
-                .unwrap();
-            let mut tool_calls: Option<Vec<ToolCall>> = if tool_calls_json.is_empty() {
-                None
-            } else {
-                Some(vec![])
-            };
-            for tc in tool_calls_json {
-                let id = tc["id"].as_str().unwrap().to_string();
-                let name = tc["function"]["name"].as_str().unwrap().to_string();
-                let arguments = tc["function"]["arguments"].clone().to_string();
-                tool_calls.as_mut().unwrap().push(ToolCall {
-                    id,
-                    name,
-                    arguments,
+                .filter(|calls| !calls.is_empty())
+                .map(|calls| {
+                    let count = calls.len();
+                    let result = calls
+                        .iter()
+                        .map(|tc| {
+                            let id = tc["id"].as_str().unwrap().to_string();
+                            let name = tc["function"]["name"].as_str().unwrap().to_string();
+                            let arguments = tc["function"]["arguments"].clone().to_string();
+                            ToolCall {
+                                id,
+                                name,
+                                arguments,
+                            }
+                        })
+                    .collect();
+                    info!(tool_call_count = count, "Parsed tool calls");
+                    result
                 });
-            }
+
             let usage_response = &response_json["usage"];
             let usage_parse_error =
                 CompletionError::ParseError("Failed to parse usage data from response".to_string());
@@ -209,6 +248,12 @@ impl CompletionModel for DeepseekCompletionModel {
                 ),
             };
 
+            info!(
+                prompt_tokens = token_usage.prompt_tokens,
+                completion_tokens = token_usage.completion_tokens,
+                total_tokens = token_usage.total_tokens,
+                "Token usage recorded"
+            );
             Ok((
                 Message::Assistant {
                     content: response_message,
@@ -223,6 +268,11 @@ impl CompletionModel for DeepseekCompletionModel {
                 .await
                 .unwrap_or_else(|_| "Unknown error (failed to read response body)".to_string());
 
+            error!(
+                status = %status,
+                error = %error_msg,
+                "API returned error response"
+            );
             Err(CompletionError::ProviderError(status.into(), error_msg))?
         }
     }

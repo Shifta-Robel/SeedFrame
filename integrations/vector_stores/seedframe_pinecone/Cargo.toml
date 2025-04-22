@@ -2,6 +2,8 @@
 name = "seedframe_pinecone"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Pinecone vector store integration crate for SeedFrame"
 
 [dependencies]
 seedframe = {path = "../../../core/"}

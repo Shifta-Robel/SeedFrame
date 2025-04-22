@@ -2,6 +2,8 @@
 name = "seedframe_voyageai"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Voyage AI integration crate for SeedFrame"
 
 [dependencies]
 seedframe = {path = "../../../core/"}

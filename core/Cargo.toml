@@ -2,6 +2,9 @@
 name = "seedframe"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "A clean, macro driven Rust library for building LLM apps"
+repository = "https://Shifta-Robel/SeedFrame"
 
 [dependencies]
 async-trait = "0.1.86"

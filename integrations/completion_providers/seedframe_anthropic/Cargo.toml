@@ -2,6 +2,8 @@
 name = "seedframe_anthropic"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Anthropic AI integration crate for SeedFrame"
 
 [dependencies]
 seedframe = {path = "../../../core/"}

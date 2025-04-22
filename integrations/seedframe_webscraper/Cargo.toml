@@ -2,6 +2,8 @@
 name = "seedframe_webscraper"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Webscraper loader integration crate for SeedFrame"
 
 [dependencies]
 seedframe = {path = "../../core/"}

@@ -6,7 +6,7 @@ license = "MIT"
 description = "Anthropic AI integration crate for SeedFrame"
 
 [dependencies]
-seedframe = {path = "../../../core/"}
+seedframe = { version="0.1.0", path = "../../../core/"}
 async-trait = "0.1.88"
 reqwest = "0.12.15"
 serde = { version = "1.0.219", features = ["derive"] }

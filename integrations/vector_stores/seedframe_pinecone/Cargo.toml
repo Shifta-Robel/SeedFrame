@@ -6,7 +6,7 @@ license = "MIT"
 description = "Pinecone vector store integration crate for SeedFrame"
 
 [dependencies]
-seedframe = {path = "../../../core/"}
+seedframe = {version = "0.1.0", path = "../../../core/"}
 pinecone-sdk = "0.1.2"
 async-trait = "0.1.88"
 serde = { version = "1.0.219", features = ["derive"] }

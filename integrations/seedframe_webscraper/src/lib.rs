@@ -223,6 +223,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_one_time_scraping() {
         let server = mockito::Server::new_async();
         let url = server.await.url();

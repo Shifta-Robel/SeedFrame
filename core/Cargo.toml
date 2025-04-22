@@ -1,10 +1,11 @@
 [package]
 name = "seedframe"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 description = "A clean, macro driven Rust library for building LLM apps"
 repository = "https://Shifta-Robel/SeedFrame"
+readme = "../README.md"
 
 [dependencies]
 async-trait = "0.1.86"

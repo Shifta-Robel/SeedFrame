@@ -19,10 +19,13 @@ Add to your `Cargo.toml`:
 ```toml
 [dependencies]
 seedframe = "0.1"
-tokio = { version = "1.42.0", features = ["full"] }
+tokio = { version = "1.42", features = ["full"] }
+async-trait = "0.1"
 # If you'll be using Extractors or custom types as tool-call arguments
 schemars = "0.8.22"
-serde = { version = "1.0.217", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dashmap = "6.1"
 ```
 ## Usage
 This library is in early stages and its API  is subject to change.

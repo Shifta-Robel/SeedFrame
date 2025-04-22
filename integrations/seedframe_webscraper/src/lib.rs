@@ -63,6 +63,7 @@ pub struct WebScraper {
 }
 
 impl WebScraper {
+    #[allow(clippy::missing_panics_doc)]
     /// Creates a new `WebScraper` from a JSON configuration string
     ///
     /// # Errors

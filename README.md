@@ -83,12 +83,13 @@ async fn main() -> Result<()> {
 ```rust
 use seedframe::prelude::*;
 use seedframe::providers::{completions::OpenAI, embeddings::OpenAIEmbedding};
+use seedframe::vector_store::InMemoryVectorStore;
 
 // Declare file loader that doesnt check for updates, loading files that match the glob pattern
 #[loader(kind = "FileOnceLoader", path = "/tmp/data/**/*.txt")]
 pub struct MyLoader;
 
-#[vector_store(kind = "InMemoryVectorStore")]
+#[vector_store(store = "InMemoryVectorStore")]
 pub struct MyVectorStore;
 
 #[embedder(provider = "OpenAIEmbedding")]
@@ -115,11 +116,47 @@ async fn main() {
     let response = client.prompt("Explain quantum computing").send().await.unwrap();
 }
 ```
+## Built-in Components
 
+**Loaders**
+- [`FileOnceLoader`](https://github.com/Shifta-Robel/SeedFrame/blob/main/core/src/loader/builtins/file_loaders/file_once_loader.rs) - Load files once using glob patterns
+- [`FileUpdatingLoader`](https://github.com/Shifta-Robel/SeedFrame/blob/main/core/src/loader/builtins/file_loaders/file_updating_loader.rs)  - Load files and watch for changes
+
+**Vector Stores**
+- [`InMemoryVectorStore`](https://github.com/Shifta-Robel/SeedFrame/blob/main/core/src/vector_store/in_memory_vec_store.rs)  - Simple in-memory vector storage implementation
+
+**Completion Providers**
+- [`OpenAI`](https://github.com/Shifta-Robel/SeedFrame/blob/main/core/src/providers/completions/openai.rs) - [OpenAI](https://openai.com)) API integration
+- [`Deepseek`](https://github.com/Shifta-Robel/SeedFrame/blob/main/core/src/providers/completions/deepseek.rs)  - (Deepseek](https://deepseek.com) API integration
+- [`Xai`](https://github.com/Shifta-Robel/SeedFrame/blob/main/core/src/providers/completions/xai.rs)  - [Xai](https://x.ai)'s API integration
+
+**Embeddings**
+- [`OpenAI`](https://github.com/Shifta-Robel/SeedFrame/blob/main/core/src/providers/embeddings/openai.rs) - [OpenAI](https://openai.com) embeddings API integration
+
+---
+
+## Integrations
+
+SeedFrame supports extending functionality through external crates. To create an integration all thats needed is to provide a type that implements the relevant trait from seedframe (`Loader`, `CompletionModel`, etc.). You can use the following crates as inspiration if you want to write an integration crate of your own.
+
+**Completion Providers**
+- [`seedframe_anthropic`](https://github.com/Shifta-Robel/SeedFrame/tree/main/integrations/completion_providers/seedframe_anthropic)  - [Anthropic](https://anthropic.com) API integration
+
+**Embedding Providers**
+- [`seedframe_voyageai`](https://github.com/Shifta-Robel/SeedFrame/tree/main/integrations/embedding_providers/seedframe_voyageai)  - [VoyageAI](https://voyageai.com) embeddings
+
+**Vector Stores**
+- [`seedframe_pinecone`](https://github.com/Shifta-Robel/SeedFrame/tree/main/integrations/vector_stores/seedframe_pinecone)  - [Pinecone](https://pinecone.io) vector database integration
+
+**Loaders**
+- [`seedframe_webscraper`](https://github.com/Shifta-Robel/SeedFrame/tree/main/integrations/seedframe_webscraper)  - Web scraping using [scraper-rs](https://docs.rs/scraper)
+
+---
+
+If you wrote an integration crate, please update this list and [submit a PR](https://github.com/Shifta-Robel/SeedFrame/compare).
 ## Contributing
 
-All contributions as welcome! Writing integrations for LLM providers and Embedders is some what trivial, use the implementations for the already supported providers as inspiration.
-This library could use support for more loaders, vector stores... so don't shy away from helping!
+All contributions as welcome! This library could use support for more loaders, vector stores, providers ... so don't shy away from helping!
 
 
 #### ⭐ Leave a Star!

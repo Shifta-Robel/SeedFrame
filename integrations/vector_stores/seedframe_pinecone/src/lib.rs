@@ -127,6 +127,7 @@ impl VectorStore for PineconeVectorStore {
         }
         Ok(())
     }
+    #[allow(clippy::cast_possible_truncation)]
     async fn top_n(&self, query: &[f64], n: usize) -> Result<Vec<Embedding>, VectorStoreError> {
         let mut index_guard = self.index.lock().await;
         let resp = index_guard
@@ -149,6 +150,7 @@ fn value_from_str(value: String) -> Value {
     Value { kind }
 }
 
+#[allow(clippy::cast_possible_truncation)]
 fn vector_from_embedding(embedding: Embedding) -> Vector {
     let id = embedding.id;
     let values = embedding.embedded_data.iter().map(|&v| v as f32).collect();
@@ -189,6 +191,7 @@ impl TryFrom<QueryResponse> for Embeddings {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn into_vec_store_error(e: PineconeError) -> VectorStoreError {
     VectorStoreError::Provider(e.to_string())
 }

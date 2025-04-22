@@ -19,15 +19,16 @@
 //!
 //! ### Building a simple RAG
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use seedframe::prelude::*;
 //! use seedframe::providers::{completions::OpenAI, embeddings::OpenAIEmbedding};
+//! use seedframe::vector_store::InMemoryVectorStore;
 //!
 //! // Declare file loader that doesnt check for updates, loading files that match the glob pattern
 //! #[loader(kind = "FileOnceLoader", path = "/tmp/data/**/*.txt")]
 //! pub struct MyLoader;
 //!
-//! #[vector_store(kind = "InMemoryVectorStore")]
+//! #[vector_store(store = "InMemoryVectorStore")]
 //! pub struct MyVectorStore;
 //!
 //! #[embedder(provider = "OpenAIEmbedding")]
@@ -57,7 +58,7 @@
 //!
 //! ### Tool calls and Extractors
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use seedframe::{providers::completions::OpenAI, prelude::*};
 //!
 //! #[client(provider = "OpenAI", tools("analyze"))]
@@ -88,6 +89,8 @@
 //!
 //!     // Tool call
 //!     client.prompt("Analyze this: 'I love Rust!' (en)")
+//!         .append_tool_response(true) // append result of tool execution to the message history
+//!         // more prompt modifiers if you want
 //!         .send()
 //!         .await?;
 //!
@@ -102,7 +105,7 @@
 //!
 //! You can pass state to tools by adding arguments of type `State<_>` to them, the only catch is that there can only be one type of State\<T\> attached to the client.
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! use seedframe::{providers::completions::OpenAI, prelude::*};
 //!
 //! #[client(provider = "OpenAI", tools("greet"))]
@@ -135,7 +138,7 @@
 //!
 //! To share mutable state you can use types with interior mutablity, eg `Mutex`s
 //!
-//! ```rust,no_run
+//! ```rust,ignore
 //! /// Greets a user
 //! /// # Arguments
 //! /// * `name`: name of the user

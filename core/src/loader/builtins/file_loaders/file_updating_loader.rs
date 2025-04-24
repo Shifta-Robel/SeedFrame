@@ -308,7 +308,7 @@ mod tests {
         assert_eq!(doc.data, "initial");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_non_matching_files_ignored() {
         let temp_dir = tempfile::tempdir().unwrap();
         let matching_path = temp_dir.path().join("test.txt");
@@ -325,10 +325,10 @@ mod tests {
         let loader = builder.build();
 
         let mut receiver = loader.subscribe().await;
-        receiver.recv().await.unwrap();
+        assert!(receiver.recv().await.is_ok());
 
         std::fs::write(&non_matching_path, "modified").unwrap();
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
         assert!(receiver.try_recv().is_err());
     }

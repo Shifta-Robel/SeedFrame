@@ -129,8 +129,8 @@ async fn main() {
 - [`InMemoryVectorStore`](https://github.com/Shifta-Robel/SeedFrame/blob/main/core/src/vector_store/in_memory_vec_store.rs)  - Simple in-memory vector storage implementation
 
 **Completion Providers**
-- [`OpenAI`](https://github.com/Shifta-Robel/SeedFrame/blob/main/core/src/providers/completions/openai.rs) - [OpenAI](https://openai.com)) API integration
-- [`Deepseek`](https://github.com/Shifta-Robel/SeedFrame/blob/main/core/src/providers/completions/deepseek.rs)  - (Deepseek](https://deepseek.com) API integration
+- [`OpenAI`](https://github.com/Shifta-Robel/SeedFrame/blob/main/core/src/providers/completions/openai.rs) - [OpenAI](https://openai.com) API integration
+- [`Deepseek`](https://github.com/Shifta-Robel/SeedFrame/blob/main/core/src/providers/completions/deepseek.rs)  - [Deepseek](https://deepseek.com) API integration
 - [`Xai`](https://github.com/Shifta-Robel/SeedFrame/blob/main/core/src/providers/completions/xai.rs)  - [Xai](https://x.ai)'s API integration
 
 **Embeddings**

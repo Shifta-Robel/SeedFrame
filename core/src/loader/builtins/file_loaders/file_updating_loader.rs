@@ -151,7 +151,7 @@ impl Loader for FileUpdatingLoader {
 
             let txc = self.tx.clone();
             let pc = self.patterns.clone();
-            tokio::task::spawn_blocking(move || {
+            tokio::spawn(async move {
                 let (evt_tx, evt_rx) = std::sync::mpsc::channel::<notify::Result<notify::Event>>();
                 let mut watcher = RecommendedWatcher::new(evt_tx, Config::default()).unwrap();
 
@@ -286,9 +286,7 @@ mod tests {
         assert_eq!(doc.data, "");
     }
 
-    // TODO: fix this, spawn_blocking does what its supposed to do
     #[tokio::test]
-    #[ignore]
     async fn test_initial_load_sends_documents() {
         let temp_dir = tempfile::tempdir().unwrap();
         let file_path = temp_dir.path().join("test.txt");

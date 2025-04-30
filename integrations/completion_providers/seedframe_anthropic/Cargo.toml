@@ -1,6 +1,6 @@
 [package]
 name = "seedframe_anthropic"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/Shifta-Robel/SeedFrame/tree/main/integrations/completion_providers/seedframe_anthropic"

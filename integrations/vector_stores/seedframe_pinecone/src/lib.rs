@@ -74,10 +74,6 @@ impl PineconeVectorStore {
     ) -> Result<Self, VectorStoreError> {
         assert!(config_json.is_some(), "{:?}",
                 serde_json::Error::custom( "A config json with the required `index_host` expected!"));
-        // if config_json.is_none() {
-        //     panic!("{:?}", 
-        //         serde_json::Error::custom( "A config json with the required `index_host` expected!"))
-        // }
         let json_config: Config = serde_json::from_str(config_json.unwrap()).unwrap();
 
         let mut api_key = None;

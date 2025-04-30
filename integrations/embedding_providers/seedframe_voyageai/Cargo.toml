@@ -3,12 +3,13 @@ name = "seedframe_voyageai"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+repository = "https://github.com/Shifta-Robel/SeedFrame/tree/main/integrations/embedding_providers/seedframe_voyageai"
 description = "Voyage AI integration crate for SeedFrame"
 
 [dependencies]
-seedframe = {version = "0.1.0", path = "../../../core/"}
-async-trait = "0.1.88"
-reqwest = "0.12.15"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
-tokio = { version = "1.42.0", features = ["full"] }
+seedframe = {version = "0.1", path = "../../../core/"}
+async-trait = "0.1"
+reqwest = "0.12"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.42", features = ["full"] }

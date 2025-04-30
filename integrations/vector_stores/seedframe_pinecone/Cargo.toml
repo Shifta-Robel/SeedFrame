@@ -3,12 +3,13 @@ name = "seedframe_pinecone"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+repository = "https://github.com/Shifta-Robel/SeedFrame/tree/main/integrations/vector_stores/seedframe_pinecone"
 description = "Pinecone vector store integration crate for SeedFrame"
 
 [dependencies]
-seedframe = {version = "0.1.0", path = "../../../core/"}
-pinecone-sdk = "0.1.2"
-async-trait = "0.1.88"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
-tokio = { version = "1.44.2", features = ["full", "test-util"] }
+seedframe = {version = "0.1", path = "../../../core/"}
+pinecone-sdk = "0.1"
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.44", features = ["full", "test-util"] }

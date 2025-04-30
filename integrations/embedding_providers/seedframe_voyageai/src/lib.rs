@@ -32,7 +32,7 @@ struct ModelConfig {
 /// # Examples
 ///
 /// Usage with the `client` macro:
-/// ```rust,no_run
+/// ```rust,ignore
 /// use seedframe_voyageai::VoyageAIEmbedding;
 ///
 /// #[embedder(

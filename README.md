@@ -19,7 +19,7 @@ Add to your `Cargo.toml`:
 ```toml
 [dependencies]
 seedframe = "0.1"
-tokio = { version = "1.42", features = ["full"] }
+tokio = "1.44"
 async-trait = "0.1"
 # If you'll be using Extractors or custom types as tool-call arguments
 schemars = "0.8.22"

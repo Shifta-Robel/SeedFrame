@@ -4,11 +4,11 @@ use pinecone_sdk::{
     pinecone::{data::Index, PineconeClientConfig},
     utils::errors::PineconeError,
 };
-use serde::{de::Error, Serialize, Deserialize};
+use serde::{de::Error, Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
-use seedframe::vector_store::{VectorStore, VectorStoreError};
 use seedframe::embeddings::embedding::Embedding;
+use seedframe::vector_store::{VectorStore, VectorStoreError};
 use tokio::sync::Mutex;
 
 /// Configuration structure for the Pinecone client.
@@ -69,11 +69,12 @@ impl PineconeVectorStore {
     /// # Errors
     /// This function will error if:
     ///  - it fails to target pinecone index
-    pub async fn new(
-        config_json: Option<&str>
-    ) -> Result<Self, VectorStoreError> {
-        assert!(config_json.is_some(), "{:?}",
-                serde_json::Error::custom( "A config json with the required `index_host` expected!"));
+    pub async fn new(config_json: Option<&str>) -> Result<Self, VectorStoreError> {
+        assert!(
+            config_json.is_some(),
+            "{:?}",
+            serde_json::Error::custom("A config json with the required `index_host` expected!")
+        );
         let json_config: Config = serde_json::from_str(config_json.unwrap()).unwrap();
 
         let mut api_key = None;
@@ -90,7 +91,12 @@ impl PineconeVectorStore {
             source_tag: json_config.source_tag,
         };
         let client = config.client().expect("Failed to create pinecone instance");
-        let index = Mutex::new(client.index(&json_config.index_host).await.map_err(into_vec_store_error)?);
+        let index = Mutex::new(
+            client
+                .index(&json_config.index_host)
+                .await
+                .map_err(into_vec_store_error)?,
+        );
         let name = json_config.namespace.unwrap_or_default();
         let namespace = Namespace { name };
         Ok(Self { index, namespace })
@@ -103,7 +109,8 @@ impl VectorStore for PineconeVectorStore {
         let mut index_guard = self.index.lock().await;
         let resp = index_guard
             .query_by_id(&id, 1, &self.namespace, None, Some(true), Some(true))
-            .await.map_err(into_vec_store_error)?;
+            .await
+            .map_err(into_vec_store_error)?;
         Ok(Embeddings::try_from(resp)?
             .0
             .first()
@@ -115,11 +122,13 @@ impl VectorStore for PineconeVectorStore {
         if embedding.raw_data.is_empty() {
             () = index_guard
                 .delete_by_id(&[&embedding.id], &self.namespace)
-                .await.map_err(into_vec_store_error)?;
+                .await
+                .map_err(into_vec_store_error)?;
         } else {
             _ = index_guard
                 .upsert(&[vector_from_embedding(embedding)], &self.namespace)
-                .await.map_err(into_vec_store_error)?;
+                .await
+                .map_err(into_vec_store_error)?;
         }
         Ok(())
     }
@@ -136,7 +145,8 @@ impl VectorStore for PineconeVectorStore {
                 Some(true),
                 Some(true),
             )
-            .await.map_err(into_vec_store_error)?;
+            .await
+            .map_err(into_vec_store_error)?;
         Ok(Embeddings::try_from(resp)?.0)
     }
 }

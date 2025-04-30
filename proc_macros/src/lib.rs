@@ -79,7 +79,7 @@ pub fn vector_store(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```rust,ignore
 /// #[embedder(
-///     provider = "VoyageAIEmbedding", 
+///     provider = "VoyageAIEmbedding",
 ///     config = r#"{"model": "voyage-3-lite"}"#
 /// )]
 /// struct MyEmbedder;

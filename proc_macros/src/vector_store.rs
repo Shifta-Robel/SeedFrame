@@ -8,7 +8,7 @@ struct VectorStoreConfig {
     #[darling(default)]
     store: Option<syn::Type>,
     #[darling(default)]
-    config: Option<JsonStr>
+    config: Option<JsonStr>,
 }
 
 #[derive(Debug, Clone)]
@@ -73,14 +73,14 @@ fn generate_builder(
 ) -> proc_macro2::TokenStream {
     let init_store = if let Some(config) = &config.config {
         let config = serde_json::to_string(&config.0).unwrap();
-        quote!{ #kind::new(Some(#config)).await.unwrap() }
-    }else {
-        quote!{ #kind::new(None).await.unwrap() }
+        quote! { #kind::new(Some(#config)).await.unwrap() }
+    } else {
+        quote! { #kind::new(None).await.unwrap() }
     };
     quote! {
         #vis async fn build() -> Result<Self, seedframe::vector_store::VectorStoreError> {
             Ok(Self {
-                inner: #init_store 
+                inner: #init_store
             })
         }
     }
